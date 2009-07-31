@@ -379,7 +379,7 @@ class FreenodeBot(SingleServerIRCBot):
 
 	def saveConfig(self):
 		print 'saveConfig(self)'
-		configFile = open(os.path.expanduser('~/SUL bot/SULWatcher.ini'), 'w')
+		configFile = open(os.path.expanduser('~/SULWatcher/SULWatcher.ini'), 'w')
 		config.write(configFile)
 		configFile.close()
 		print 'done!'
@@ -549,7 +549,7 @@ class BotThread(threading.Thread):
 def main():
 	global bot1, rcreader, bot2, config, nickname, alias, password, mainchannel, mainserver, wmserver, rcfeed
 	config = ConfigParser.ConfigParser()
-	config.read(os.path.expanduser('~/SUL bot/SULWatcher.ini'))
+	config.read(os.path.expanduser('~/SULWatcher/SULWatcher.ini'))
 	nickname = config.get('Setup', 'nickname')
 	alias = config.get('Setup', 'alias')
 	password = config.get('Setup', 'password')
