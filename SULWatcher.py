@@ -1,6 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
-# Bot to watch channels
+#
+# SYNPOPSIS:	This bot parses the RC feed for CentralAuth using regex, and reports to a freenode channel
+# LICENSE:		GPL
+# CREDITS:		Mike.lifeguard, Erwin, Dungodung (Filip Maljkovic)
+#
 
 import sys, os, re, time, string, threading, thread, urllib, math
 import ConfigParser
