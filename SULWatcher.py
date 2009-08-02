@@ -523,17 +523,17 @@ class WikimediaBot(SingleServerIRCBot):
 						good = True
 				if not bad and not good:
 					if globals()['lastbot'] != 1:
-						bot1.msg("\x0303%s\x03@%s: \x0302http://meta.wikimedia.org/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, urllib.quote(sulname)))
+						bot1.msg("\x0303%s\x03@%s: \x0302https://secure.wikimedia.org/wikipedia/meta/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, urllib.quote(sulname)))
 						globals()['lastbot'] = 1
 					else:
-						bot2.msg("\x0303%s\x03@%s: \x0302http://meta.wikimedia.org/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, urllib.quote(sulname)))
+						bot2.msg("\x0303%s\x03@%s: \x0302https://secure.wikimedia.org/wikipedia/meta/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, urllib.quote(sulname)))
 						globals()['lastbot'] = 2
 				elif bad and not good:
 					if globals()['lastbot'] != 1:
-						bot1.msg("\x0303%s\x03@%s \x0305\x02matches badword %s\017: \x0302http://meta.wikimedia.org/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, '; '.join(matches), urllib.quote(sulname)))
+						bot1.msg("\x0303%s\x03@%s \x0305\x02matches badword %s\017: \x0302https://secure.wikimedia.org/wikipedia/meta/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, '; '.join(matches), urllib.quote(sulname)))
 						globals()['lastbot'] = 1
 					else:
-						bot2.msg("\x0303%s\x03@%s \x0305\x02matches badword %s\017: \x0302http://meta.wikimedia.org/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, '; '.join(matches), urllib.quote(sulname)))
+						bot2.msg("\x0303%s\x03@%s \x0305\x02matches badword %s\017: \x0302https://secure.wikimedia.org/wikipedia/meta/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, '; '.join(matches), urllib.quote(sulname)))
 						globals()['lastbot'] = 2
 			globals()['lastsulname'] = sulname
 		except:
