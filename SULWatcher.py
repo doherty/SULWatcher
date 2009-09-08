@@ -232,7 +232,7 @@ class FreenodeBot(SingleServerIRCBot):
 				self.msg('Whitelisted users: %s' % ', '.join(config.get('Setup', 'whitelist').split('<|>')), target)
 		elif args[0] == 'add':
 			if args[1] == 'owner':
-				if self.getCloak(e.source()) != 'wikibooks/mike.lifeguard':
+				if self.getCloak(e.source()) != 'wikimedia/mikelifeguard':
 					self.msg('You can\'t add owners unless you are Mike_lifeguard!', target)
 				else:
 					who = ' '.join(args[2:])
