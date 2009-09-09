@@ -9,7 +9,7 @@ password =
 owner = wikibooks/mike.lifeguard
 privileged = wikibooks/mike.lifeguard
 whitelist = 
-help = This bot watches the unification feed. The manual is located at [[m:User:Mike.lifeguard/SULWatcher]]. You can issue commands to either nick & the result will be the same.
+help = This bot watches the unification feed. The manual is located at http://toolserver.org/~lifeguard/docs/stewardbots/SULWatcher - you can issue commands to either nick & the result will be the same.
 quitmsg = Goodbye!
 
 [0]
