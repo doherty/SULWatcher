@@ -6,18 +6,18 @@ alias = WatcherSUL
 wmserver = irc.wikimedia.org
 rcfeed = #central
 password = 
-owner = wikibooks/mike.lifeguard
-privileged = wikibooks/mike.lifeguard
+owner = wikimedia/mikelifeguard
+privileged = wikimedia/mikelifeguard
 whitelist = 
-help = This bot watches the unification feed. The manual is located at http://toolserver.org/~lifeguard/docs/stewardbots/SULWatcher - you can issue commands to either nick & the result will be the same.
+help = This bot watches the unification feed. The manual is located at http://toolserver.org/~stewardbots/docs/SULWatcher - you can issue commands to either nick & the result will be the same.
 quitmsg = Goodbye!
 
 [0]
 regex = poop
 reason = whee!
-adder = wikibooks/mike.lifeguard
+adder = wikimedia/mikelifeguard
 
 [1]
 regex = cock
 reason = test
-adder = wikibooks/mike.lifeguard
+adder = wikimedia/mikelifeguard
