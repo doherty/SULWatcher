@@ -507,7 +507,7 @@ class WikimediaBot(SingleServerIRCBot):
 			if not globals()['lastsulname'] or globals()['lastsulname'] != sulname:
 				bad = False
 				good = False
-				print sulname + "@" + sulwiki
+##				print sulname + "@" + sulwiki
 				badwords = []
 				for section in config.sections():
 					if section != 'Setup':
