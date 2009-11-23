@@ -320,7 +320,7 @@ class FreenodeBot(SingleServerIRCBot):
 				except:
 					print 'bot2 didn\'t disconnect'
 				print 'Killed. Now exiting...'
-				os._exit(os.EX_OK)#kills everything _NOW_
+				sys.exit(0)
 		elif args[0] == 'restart':#Restart
 			if self.getCloak(e.source()) not in config.get('Setup', 'owner').split('<|>'):
 				self.msg('You can\'t restart me; you\'re not my owner!', target)
