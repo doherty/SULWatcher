@@ -8,19 +8,21 @@
 
 import sys, os, re, time, string, threading, thread, urllib, math
 import ConfigParser
-#needs python-irclib
+# needs python-irclib
 from ircbot import SingleServerIRCBot
 from ircbot import IRCDict
 from ircbot import Channel
 from irclib import nm_to_n
 
 class FreenodeBot(SingleServerIRCBot):
-	def __init__(self, channel, nickname, server, password, port=6667):
+	def __init__(self, channel, nickname, server, password, opernick, operpass, port=6667):
 		SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
 		self.server = server
 		self.channel = channel
 		self.nickname = nickname
 		self.password = password
+		self.opernick = opernick
+		self.operpass = operpass
 		
 	def on_error(self, c, e):
 		print 'Error:\nArguments: %s\nTarget: %s' % (e.arguments(), e.target())
@@ -30,13 +32,14 @@ class FreenodeBot(SingleServerIRCBot):
 	def on_nicknameinuse(self, c, e):
 		c.nick(c.get_nickname() + "_")
 		c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
-		c.nick(self.nickname) #FIX
+		c.nick(self.nickname) # FIX -- what is broken? 0_o
 		c.privmsg("NickServ",'IDENTIFY %s' % self.password)
 
 	def on_welcome(self, c, e):
 		c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
 		c.privmsg("NickServ",'IDENTIFY %s' % self.password)
-		time.sleep(5)#let identification succeed before joining channels
+		c.oper(self.opernick,self.operpass)
+		time.sleep(5) # let identification succeed before joining channels
 		c.join(self.channel)
 
 	def on_ctcp(self, c, e):
@@ -46,14 +49,14 @@ class FreenodeBot(SingleServerIRCBot):
 			if len(e.arguments()) > 1: c.ctcp_reply(nm_to_n(e.source()),"PING " + e.arguments()[1])
 
 	def on_action(self, c, e):
-		timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
+		#timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
 		nick = nm_to_n(e.source())
 		who = '<%s/%s>' % (e.target(), nick)
 		a = e.arguments()[0]
-##        print timestamp+" * "+who+a
+		#print timestamp+" * "+who+a
 		
 	def on_privmsg(self, c, e):
-		timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
+		#timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
 		nick = nm_to_n(e.source())
 		target = nick
 		who = '<%s/%s>' % (e.target(), nick)
@@ -69,7 +72,7 @@ class FreenodeBot(SingleServerIRCBot):
 						self.msg('You have to follow the proper syntax. See \x0302http://toolserver.org/~stewardbots/SULWatcher\x03', nick)
 
 	def on_pubmsg(self, c, e):
-		timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
+		#timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
 		nick = nm_to_n(e.source())
 		target = e.target()
 		who = '<%s/%s>' % (e.target(), nick)
@@ -93,7 +96,7 @@ class FreenodeBot(SingleServerIRCBot):
 
 		if args[0] == 'help':
 			self.msg(config.get('Setup', 'help'), nick)
-		elif args[0] == 'test':#Notifications
+		elif args[0] == 'test': # Notifications
 			if len(args)>=4:
 				try:
 					i = args.index('regex')
@@ -153,7 +156,7 @@ class FreenodeBot(SingleServerIRCBot):
 						shortlists.append(regexes[lower:upper])
 					for l in range(0, len(shortlists)):
 						self.msg(r'%s added (%s/%s): %s.' % (adder, l+1, len(shortlists), ", ".join(shortlists[l])), target)
-						time.sleep(2)#sleep a bit to avoid flooding?
+						time.sleep(2) # sleep a bit to avoid flooding?
 			elif args[1] == 'number':
 				index = args[2]
 				if config.has_section(index):
@@ -208,7 +211,7 @@ class FreenodeBot(SingleServerIRCBot):
 								self.msg('The regex %s was added by %s. To re-attribute it to you and change the note, say "SULWatcher: edit %s reason ! %s".' % (regex, adder, section, newreason), target)
 			else:
 				self.msg('Entry #%s doesn\'t exist. Go fish.' % args[2], target)
-		elif args[0] == 'list':#Lists: modify and show
+		elif args[0] == 'list': # Lists: modify and show
 			if args[1] == 'owner' or args[1] == 'owners':
 				self.msg('Owners can issue restricted commands: %s' % ', '.join(config.get('Setup', 'owner').split('<|>')), nick)
 			if args[1] == 'privileged':
@@ -227,7 +230,7 @@ class FreenodeBot(SingleServerIRCBot):
 					shortlists.append(longlist[lower:upper])
 				for l in range(0, len(shortlists)):
 					self.msg('Regex list (%s/%s): %s' % (l+1, len(shortlists), ", ".join(shortlists[l])), target)
-					time.sleep(2)#sleep a bit to avoid flooding?
+					#time.sleep(2) # sleep a bit to avoid flooding?
 			elif args[1] == 'whitelist':
 				self.msg('Whitelisted users: %s' % ', '.join(config.get('Setup', 'whitelist').split('<|>')), target)
 		elif args[0] == 'add':
@@ -283,13 +286,13 @@ class FreenodeBot(SingleServerIRCBot):
 			elif args[1] == 'owner':
 				owner = ' '.join(args[2:])
 				self.removeFromList(owner, 'Setup', 'owner', nick)
-		elif args[0] == 'huggle':#Huggle
+		elif args[0] == 'huggle': # Huggle
 			try:
 				who = args[1]
 				self.connection.action(self.channel, 'huggles ' + who)
 			except:
 				self.msg('lolfail', channel)
-		elif args[0] == 'die':#Die
+		elif args[0] == 'die': # Die
 			if self.getCloak(e.source()) not in config.get('Setup', 'owner').split('<|>'):
 				self.msg('You can\'t kill me; you\'re not my owner!', target)
 			else:
@@ -321,7 +324,7 @@ class FreenodeBot(SingleServerIRCBot):
 					print 'bot2 didn\'t disconnect'
 				print 'Killed. Now exiting...'
 				sys.exit(0)
-		elif args[0] == 'restart':#Restart
+		elif args[0] == 'restart': # Restart
 			if self.getCloak(e.source()) not in config.get('Setup', 'owner').split('<|>'):
 				self.msg('You can\'t restart me; you\'re not my owner!', target)
 			else:
@@ -365,21 +368,21 @@ class FreenodeBot(SingleServerIRCBot):
 				else:
 					print 'This shouldn\'t happen'
 
-##    def integrityCheck(self):
-##        sectionlist = config.sections()
-##        sectionlist = sectionlist.remove('Setup').sort()
-##        for i in range(0,len(sectionlist)):
-##            if i != sectionlist[i]:
-##                tempregex = config.get(sectionlist[i+1], 'regex')
-##                tempadder = config.get(sectionlist[i+1], 'adder')
-##                if config.get(sectionlist[i], 'reason'):
-##                    tempreason = config.get(sectionlist[i+1], 'reason')
-##                self.setConfig(i, 'regex', tempregex)
-##                self.setConfig(i, 'adder', tempadder)
-##                if tempreason:
-##                    self.setConfig(i, 'reason', tempreason)
-##                config.remove_section(sectionlist[i+1])
-##                self.saveConfig()
+##	  def integrityCheck(self):
+##		  sectionlist = config.sections()
+##		  sectionlist = sectionlist.remove('Setup').sort()
+##		  for i in range(0,len(sectionlist)):
+##			  if i != sectionlist[i]:
+##				  tempregex = config.get(sectionlist[i+1], 'regex')
+##				  tempadder = config.get(sectionlist[i+1], 'adder')
+##				  if config.get(sectionlist[i], 'reason'):
+##					  tempreason = config.get(sectionlist[i+1], 'reason')
+##				  self.setConfig(i, 'regex', tempregex)
+##				  self.setConfig(i, 'adder', tempadder)
+##				  if tempreason:
+##					  self.setConfig(i, 'reason', tempreason)
+##				  config.remove_section(sectionlist[i+1])
+##				  self.saveConfig()
 
 	def saveConfig(self):
 		print 'saveConfig(self)'
@@ -413,7 +416,7 @@ class FreenodeBot(SingleServerIRCBot):
 				config.add_section(str(i))
 				self.setConfig(str(i), 'regex', regex)
 				self.setConfig(str(i), 'adder', cloak)
-				break #leave only the the smallest for loop
+				break # leave only the the smallest for loop
 		self.saveConfig()
 		self.msg('%s added %s to the list of regexes. If you would like to set a reason, say "SULWatcher: add reason %s reason for adding the regex".' % (cloak, regex, self.getIndex('regex', regex)), target)
 
@@ -460,7 +463,7 @@ class FreenodeBot(SingleServerIRCBot):
 			self.msg('%s not in %s.' % (who, groupname), target)
 
 	def msg(self, message, target=None):
-##        print 'msg(self, \'%s\', \'%s\')' % (message, target)
+		#print 'msg(self, \'%s\', \'%s\')' % (message, target)
 		if not target:
 			target = self.channel
 		self.connection.privmsg(target, message)
@@ -497,8 +500,8 @@ class WikimediaBot(SingleServerIRCBot):
 		
 	def on_pubmsg(self, c, e):
 		a = e.arguments()[0]
-##        bot1.msg(a)
-		#Parsing the rcbot output: \x0314[[\x0307Usu\xc3\xa1rio:Liliaan\x0314]]\x034@ptwiki\x0310 \x0302http://pt.wikipedia.org/wiki/Usu%C3%A1rio:Liliaan\x03 \x035*\x03 \x0303Liliaan\x03 \x035*\x03
+		#bot1.msg(a)
+		# Parsing the rcbot output: \x0314[[\x0307Usu\xc3\xa1rio:Liliaan\x0314]]\x034@ptwiki\x0310 \x0302http://pt.wikipedia.org/wiki/Usu%C3%A1rio:Liliaan\x03 \x035*\x03 \x0303Liliaan\x03 \x035*\x03
 		parse = re.compile("\\x0314\[\[\\x0307(?P<localname>.*)\\x0314\]\]\\x034@(?P<sulwiki>.*)\\x0310.*\\x0303(?P<sulname>.*)\\x03 \\x035\*\\x03",re.UNICODE)
 		try:
 			localname = parse.search(a).group('localname')
@@ -507,7 +510,7 @@ class WikimediaBot(SingleServerIRCBot):
 			if not globals()['lastsulname'] or globals()['lastsulname'] != sulname:
 				bad = False
 				good = False
-##				print sulname + "@" + sulwiki
+				#print sulname + "@" + sulwiki
 				badwords = []
 				for section in config.sections():
 					if section != 'Setup':
@@ -551,27 +554,29 @@ class BotThread(threading.Thread):
 		bot.start()
 
 def main():
-	global bot1, rcreader, bot2, config, nickname, alias, password, mainchannel, mainserver, wmserver, rcfeed
+	global bot1, rcreader, bot2, config, nickname, alias, password, mainchannel, mainserver, wmserver, rcfeed, opernick, operpass
 	config = ConfigParser.ConfigParser()
 	config.read(os.path.expanduser('~/SULWatcher/SULWatcher.ini'))
 	nickname = config.get('Setup', 'nickname')
+	opernick = config.get('Setup', 'opernick')
+	operpass = config.get('Setup', 'operpass')
 	alias = config.get('Setup', 'alias')
 	password = config.get('Setup', 'password')
 	mainchannel = config.get('Setup', 'channel')
 	mainserver = config.get('Setup', 'server')
 	wmserver = config.get('Setup', 'wmserver')
 	rcfeed = config.get('Setup', 'rcfeed')
-	bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 6667)
+	bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, opernick, operpass, 8001)
 	BotThread(bot1).start()
-	bot2 = FreenodeBot(mainchannel, alias, mainserver, password, 6667)
+	bot2 = FreenodeBot(mainchannel, alias, mainserver, password, opernick, operpass, 8001)
 	BotThread(bot2).start()
-	time.sleep(6)#the Freenode bots connect comparatively slowly & have a 5s delay to identify to services before joining channels
+	time.sleep(6) # The Freenode bots connect comparatively slowly & have a 5s delay to identify to services before joining channels
 	rcreader = WikimediaBot(rcfeed, nickname, wmserver, 6667)
-	BotThread(rcreader).start() #can cause ServerNotConnectedError
+	BotThread(rcreader).start() # Can cause ServerNotConnectedError
 
 if __name__ == "__main__":
 	global bot1, rcreader, bot2, config
-#    main()
+	#main()
 	try:
 		main()
 	except:
