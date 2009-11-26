@@ -39,7 +39,7 @@ class FreenodeBot(SingleServerIRCBot):
         c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
         c.privmsg("NickServ",'IDENTIFY %s' % self.password)
         c.oper(self.opernick,self.operpass)
-        print "c.oper(%s,%s)" % (self.opernick,self.operpass)
+        print "c.oper(%s,%s)" % (self.opernick,self.operpass)li
         time.sleep(5) # let identification succeed before joining channels
         c.join(self.channel)
 
@@ -231,7 +231,7 @@ class FreenodeBot(SingleServerIRCBot):
                     shortlists.append(longlist[lower:upper])
                 for l in range(0, len(shortlists)):
                     self.msg('Regex list (%s/%s): %s' % (l+1, len(shortlists), ", ".join(shortlists[l])), target)
-                    #time.sleep(2) # sleep a bit to avoid flooding?
+                    time.sleep(2) # sleep a bit to avoid flooding?
             elif args[1] == 'whitelist':
                 self.msg('Whitelisted users: %s' % ', '.join(config.get('Setup', 'whitelist').split('<|>')), target)
         elif args[0] == 'add':
