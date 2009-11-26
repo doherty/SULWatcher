@@ -39,6 +39,7 @@ class FreenodeBot(SingleServerIRCBot):
         c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
         c.privmsg("NickServ",'IDENTIFY %s' % self.password)
         c.oper(self.opernick,self.operpass)
+        print "c.oper(%s,%s)" % (self.opernick,self.operpass)
         time.sleep(5) # let identification succeed before joining channels
         c.join(self.channel)
 
