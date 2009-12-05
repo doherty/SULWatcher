@@ -218,15 +218,14 @@ class FreenodeBot(SingleServerIRCBot):
                         oldreason = None
                     adder = self.getCloak(e.source())
                     oldregex = config.get(section, 'regex')
-                    try:
-                        self.removeRegex(oldregex, target)
-                        self.addRegex(newregex, adder, target)
-                        if oldreason is not None:
-                            self.setConfig(section, 'reason', oldreason)
-                            self.saveConfig()
-                            self.msg('I kept the old reason ("%s"), but you can change it with "SULWatcher: edit %s reason <reason>".' % (oldreason, section), target)
-                        else:
-                            self.msg('There was no reason provided previously - you should add one with "SULWatcher: add reason %s <reason>".' % section, target)
+                    self.removeRegex(oldregex, target)
+                    self.addRegex(newregex, adder, target)
+                    if oldreason is not None:
+                        self.setConfig(section, 'reason', oldreason)
+                        self.saveConfig()
+                        self.msg('I kept the old reason ("%s"), but you can change it with "SULWatcher: edit %s reason <reason>".' % (oldreason, section), target)
+                    else:
+                        self.msg('There was no reason provided previously - you should add one with "SULWatcher: add reason %s <reason>".' % section, target)
                 elif args[2] == 'note' or args[2] == 'reason':
                     cloak = self.getCloak(e.source())
                     if args[3] == '!':
