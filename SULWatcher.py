@@ -8,21 +8,45 @@
 
 import sys, os, re, time, string, threading, thread, urllib, math
 import ConfigParser
-# needs python-irclib
+# Needs python-irclib
 from ircbot import SingleServerIRCBot
-from ircbot import IRCDict
-from ircbot import Channel
 from irclib import nm_to_n
 
+class SULWatcherException(Exception):
+    """A single base exception class for all other SULWatcher errors."""
+    pass
+
+class CommanderError(SULWatcherException):
+    """This exception is raised when the command parser fails."""
+    def __init__(self,value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
+class BotDisconnectError(SULWatcherException):
+    """This exception is raised when a bot cannot disconnect."""
+    def __init__(self,value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
+class BotReconnectError(SULWatcherException):
+    """This exception is raised when a bot doesn't reconnect properly"""
+    def __init(self,value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
 class FreenodeBot(SingleServerIRCBot):
-    def __init__(self, channel, nickname, server, password, opernick, operpass, port=6667):
+    def __init__(self, channel, nickname, server, password, port=6667, opernick=None, operpass=None):
         SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
         self.server = server
         self.channel = channel
         self.nickname = nickname
         self.password = password
-        self.opernick = opernick
-        self.operpass = operpass
+        if opernick and operpass:
+            self.opernick = opernick
+            self.operpass = operpass
         
     def on_error(self, c, e):
         print 'Error:\nArguments: %s\nTarget: %s' % (e.arguments(), e.target())
@@ -38,61 +62,74 @@ class FreenodeBot(SingleServerIRCBot):
     def on_welcome(self, c, e):
         c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
         c.privmsg("NickServ",'IDENTIFY %s' % self.password)
-        c.oper(self.opernick,self.operpass)
-        print "c.oper(%s,%s)" % (self.opernick,self.operpass)li
+        if self.opernick and self.operpass:
+            c.oper(self.opernick,self.operpass)
+            print "c.oper(%s,%s)" % (self.opernick,self.operpass)
+        print "Sent identification data; sleeping 5s..."
         time.sleep(5) # let identification succeed before joining channels
+        print "Slept 5s; let's hope identification succeeded!"
         c.join(self.channel)
 
     def on_ctcp(self, c, e):
         if e.arguments()[0] == "VERSION":
-            c.ctcp_reply(nm_to_n(e.source()),"Bot for watching stuff in " + self.channel)
+            c.ctcp_reply(nm_to_n(e.source()),"Bot for watching stuff in %s" % self.channel)
         elif e.arguments()[0] == "PING":
             if len(e.arguments()) > 1: c.ctcp_reply(nm_to_n(e.source()),"PING " + e.arguments()[1])
 
-    def on_action(self, c, e):
-        #timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
-        nick = nm_to_n(e.source())
-        who = '<%s/%s>' % (e.target(), nick)
-        a = e.arguments()[0]
-        #print timestamp+" * "+who+a
-        
     def on_privmsg(self, c, e):
         #timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
         nick = nm_to_n(e.source())
-        target = nick
-        who = '<%s/%s>' % (e.target(), nick)
+        target = nick # If they did the command in PM, keep replies in PM
+        #who = '<%s/%s>' % (e.target(), nick)
         a = e.arguments()[0].split(":", 1)
+        #print '%s %s: %s' % (timestamp, target, a)
         if a[0] == self.nickname:
             if len(a) == 2:
                 command = a[1].strip()
-                if self.getCloak(e.source()) in config.get('Setup', 'privileged').split('<|>'):
+                if self.channels[self.channel].is_voiced(nick) or self.channels[self.channel].is_oper(nick):
                     try:
                         self.do_command(e, command, target)
+                    except CommanderError as error:
+                        print 'CommanderError: %s' % error.value
+                        self.msg('You have to follow the proper syntax. See \x0302http://toolserver.org/~stewardbots/SULWatcher\x03', nick)
                     except:
                         print 'Error: %s' % sys.exc_info()[1]
-                        self.msg('You have to follow the proper syntax. See \x0302http://toolserver.org/~stewardbots/SULWatcher\x03', nick)
+                        self.msg('Unknown internal error: %s' % sys.exc_info()[1], target)
+                elif command == 'test': # Safe to let them do this
+                    self.do_command(e, command, target)
+                else:
+                    self.msg('Sorry, you need to be voiced to give the bot commands.', nick)
 
     def on_pubmsg(self, c, e):
         #timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
         nick = nm_to_n(e.source())
-        target = e.target()
-        who = '<%s/%s>' % (e.target(), nick)
+        target = e.target() # If they issued the command in a channel, replies should go to the channel
+        #who = '<%s/%s>' % (target, nick)
         a = e.arguments()[0].split(":", 1)
+        #print '%s %s: %s' % (timestamp, target, a)
         if a[0] == self.nickname:
             if len(a) == 2:
                 command = a[1].strip()
-                if self.getCloak(e.source()) in config.get('Setup', 'privileged').split('<|>'):
+                if self.channels[self.channel].is_voiced(nick) or self.channels[self.channel].is_oper(nick):
                     try:
                         self.do_command(e, command, target)
+                    except CommanderError as error:
+                        print 'CommanderError: %s' % error.value
+                        self.msg('You have to follow the proper syntax. See \x0302http://toolserver.org/~stewardbots/SULWatcher\x03', target)
                     except:
                         print 'Error: %s' % sys.exc_info()[1]
-                        self.msg('You have to follow the proper syntax. See \x0302http://toolserver.org/~stewardbots/SULWatcher\x03', target)
+                        self.msg('Unknown internal error: %s' % sys.exc_info()[1], target)
+                elif command == 'test': # This one is safe to let them do
+                    self.do_command(e, command, target)
+                else:
+                    self.msg('Sorry, you need to be voiced to give the bot commands.' , nick) # Let them know they need to be voiced
 
     def do_command(self, e, cmd, target):
+        print "do_command(self, e, '%s', '%s')" % (cmd, target)
         nick = nm_to_n(e.source())
         c = self.connection
-        args = cmd.split(' ')
-        if args[0] == '_':
+        args = cmd.split(' ') # Should use regex to parse here... though that may be tricky
+        if args[0] == '_': # I forget why this was needed :(
             args.remove('_')
 
         if args[0] == 'help':
@@ -104,13 +141,14 @@ class FreenodeBot(SingleServerIRCBot):
                     string = ' '.join(args[1:i])
                     probe = ' '.join(args[i+1:])
                     if (re.search(probe, string, re.IGNORECASE)):
-                        self.msg('\'%s\' matches regex \'%s\'.' % (string, probe) , target)
+                        self.msg('"%s" matches regex "%s"' % (string, probe) , target)
                     else:
-                        self.msg('\'%s\' does not match regex \'%s\'.' % (string, probe) , target)
-                except:
-                    self.msg(r'Please use the format "SULWatcher test string to test regex \bregular ?expression\b".', target)
-            else:
-                self.msg(r"Yes, I'm alive. You can test a string against a regex by saying 'SULWatcher: test string to test regex \bregular ?expression\b'.", target)
+                        self.msg('"%s" does not match regex "%s"' % (string, probe) , target)
+                except IndexError as error:
+                    print 'IndexError: %s' % sys.exc_info()[1]
+                    raise CommanderError("You didn't use the right format for testing: 'SULWatcher: test <string to test> regex \bregular ?expression\b'")
+            elif len(args)==1:
+                self.msg("Yes, I'm alive. You can test a string against a regex by saying 'SULWatcher: test <string to test> regex \bregular ?expression\b'.", target)
         elif args[0] == 'find' or args[0] == 'search':
             if args[1] == 'regex' or args[1] == 'badword':
                 badword = ' '.join(args[2:])
@@ -118,12 +156,12 @@ class FreenodeBot(SingleServerIRCBot):
                     if section != 'Setup':
                         if config.get(section, 'regex') == badword:
                             adder = config.get(section, 'adder')
-                            try:
+                            if config.has_option(index,'reason'):
                                 self.msg('The regex %s (#%s) was added by %s with the note: "%s".' % (badword, self.getIndex('regex', badword), adder, config.get(section, 'reason')), target)
-                            except:
+                            else:
                                 self.msg('The regex %s (#%s) was added by %s with no reason.' % (badword, self.getIndex('regex', badword), adder), target)
-                            return
-                self.msg(r'%s is not listed. You can add it by saying "SULWatcher: add regex %s"' % (badword, badword), target)
+                            break # was return
+                self.msg('%s is not listed. You can add it by saying "SULWatcher: add regex %s"' % (badword, badword), target)
             elif args[1] == 'match' or args[1] == 'matches':
                 string = ' '.join(args[2:])
                 probes = []
@@ -135,9 +173,9 @@ class FreenodeBot(SingleServerIRCBot):
                     if re.search(p, string, re.IGNORECASE):
                         matches.append(p)
                 if len(matches) == 0:
-                    self.msg('There is no regex which matches that string.', target)
+                    self.msg('There is no regex which matches the string "%s"' % string, target)
                 else:
-                    self.msg('\'%s\' matches \'%s\'.' % (string, '\', \''.join(matches)) , target)
+                    self.msg('"%s" matches "%s".' % (string, '", "'.join(matches)) , target)
             elif args[1] == 'adder':
                 adder = args[2]
                 regexes = []
@@ -157,16 +195,16 @@ class FreenodeBot(SingleServerIRCBot):
                         shortlists.append(regexes[lower:upper])
                     for l in range(0, len(shortlists)):
                         self.msg(r'%s added (%s/%s): %s.' % (adder, l+1, len(shortlists), ", ".join(shortlists[l])), target)
-                        time.sleep(2) # sleep a bit to avoid flooding?
+                        time.sleep(2) # Sleep a bit to avoid flooding?
             elif args[1] == 'number':
                 index = args[2]
                 if config.has_section(index):
-                    try:
-                        self.msg('%s: \'%s\' was added by %s with the reason: "%s"' % (index, config.get(index, 'regex'), config.get(index, 'adder'), config.get(index, 'reason')), target)
-                    except:
-                        self.msg('%s: \'%s\' was added by %s.' % (index, config.get(index, 'regex'), config.get(index, 'adder')), target)
+                    if config.has_option(index,'reason'):
+                        self.msg('%s: "%s" was added by %s with the reason: "%s"' % (index, config.get(index, 'regex'), config.get(index, 'adder'), config.get(index, 'reason')), target)
+                    else:
+                        self.msg('%s: "%s" was added by %s.' % (index, config.get(index, 'regex'), config.get(index, 'adder')), target)
                 else:
-                    self.msg(r'%s doesn\'t exist. You can search for the regex itself using "SULWatcher: find regex \bregex\b".' % index, target)
+                    self.msg('%s doesn\'t exist. You can search for the regex itself using "SULWatcher: find regex \bregex\b" or by testing a string against the regexes with "SULWatcher: find matches <string>".' % index, target)
             else:
                 self.msg('You can search for info on a regex by saying "SULWatcher: find regex \bregex\b", or you can find the regex matching a string by saying "SULWatcher: find match String to test".', target)
         elif args[0] == 'edit' or args[0] == 'change':
@@ -176,19 +214,19 @@ class FreenodeBot(SingleServerIRCBot):
                     newregex = ' '.join(args[3:])
                     if config.has_option(section, 'reason'):
                         oldreason = config.get(section, 'reason')
+                    else:
+                        oldreason = None
                     adder = self.getCloak(e.source())
                     oldregex = config.get(section, 'regex')
                     try:
                         self.removeRegex(oldregex, target)
                         self.addRegex(newregex, adder, target)
-                        try:
+                        if oldreason is not None:
                             self.setConfig(section, 'reason', oldreason)
                             self.saveConfig()
-                            self.msg('I kept the old reason ("%s"), but you can change it with "SULWatcher: edit %s reason Whatever".' % (oldreason, section), target)
-                        except:
-                            self.msg('There was no reason provided previously - you should add one with "SULWatcher: add reason %s Whatever".' % section, target)
-                    except:
-                        self.msg('Something bad happened - you\'ll have to change %s to %s manually: %s' % (oldregex, newregex, sys.exc_info()[1]), target)
+                            self.msg('I kept the old reason ("%s"), but you can change it with "SULWatcher: edit %s reason <reason>".' % (oldreason, section), target)
+                        else:
+                            self.msg('There was no reason provided previously - you should add one with "SULWatcher: add reason %s <reason>".' % section, target)
                 elif args[2] == 'note' or args[2] == 'reason':
                     cloak = self.getCloak(e.source())
                     if args[3] == '!':
@@ -206,18 +244,14 @@ class FreenodeBot(SingleServerIRCBot):
                             self.saveConfig()
                             self.msg('OK, changed the note for %s to "%s".' % (regex, newreason), target)
                         else:
-                            try:
+                            if config.has_option(section, 'reason'):
                                 self.msg('The regex %s was added by %s with the note: "%s". To re-attribute it to you and change the note, say "SULWatcher: edit %s reason ! %s".' % (regex, adder, config.get(section, 'reason'), section, newreason), target)
-                            except:
+                            else:
                                 self.msg('The regex %s was added by %s. To re-attribute it to you and change the note, say "SULWatcher: edit %s reason ! %s".' % (regex, adder, section, newreason), target)
             else:
                 self.msg('Entry #%s doesn\'t exist. Go fish.' % args[2], target)
         elif args[0] == 'list': # Lists: modify and show
-            if args[1] == 'owner' or args[1] == 'owners':
-                self.msg('Owners can issue restricted commands: %s' % ', '.join(config.get('Setup', 'owner').split('<|>')), nick)
-            if args[1] == 'privileged':
-                self.msg('Privileged cloaks: %s' % ', '.join(config.get('Setup', 'privileged').split('<|>')), nick)
-            elif args[1] == 'badword' or args[1] == 'badwords' or args[1] == 'regex' or args[1] == 'regexes':
+            if args[1] == 'badword' or args[1] == 'badwords' or args[1] == 'regex' or args[1] == 'regexes':
                 longlist = []
                 for section in config.sections():
                     if section != 'Setup':
@@ -235,16 +269,7 @@ class FreenodeBot(SingleServerIRCBot):
             elif args[1] == 'whitelist':
                 self.msg('Whitelisted users: %s' % ', '.join(config.get('Setup', 'whitelist').split('<|>')), target)
         elif args[0] == 'add':
-            if args[1] == 'owner':
-                if self.getCloak(e.source()) != 'wikimedia/mikelifeguard':
-                    self.msg('You can\'t add owners unless you are Mike_lifeguard!', target)
-                else:
-                    who = ' '.join(args[2:])
-                    self.addToList(who, 'Setup', 'owner', target)
-            if args[1] == 'privileged':
-                who = ' '.join(args[2:])
-                self.addToList(who, 'Setup', 'privileged', target)
-            elif args[1] == 'badword' or args[1] == 'regex':
+            if args[1] == 'badword' or args[1] == 'regex':
                 badword = ' '.join(args[2:])
                 adder = self.getCloak(e.source())
                 self.addRegex(badword, adder, target)
@@ -275,66 +300,58 @@ class FreenodeBot(SingleServerIRCBot):
                 who = ' '.join(args[2:])
                 self.addToList(who, 'Setup', 'whitelist', target)
         elif args[0] == 'remove':
-            if args[1] == 'privileged':
-                who = ' '.join(args[2:])
-                self.removeFromList(who, 'Setup', 'privileged', target)
-            elif args[1] == 'badword' or args[1] == 'regex':
+            if args[1] == 'badword' or args[1] == 'regex':
                 badword = ' '.join(args[2:])
                 self.removeRegex(badword, target)
             elif args[1] == 'whitelist':
                 whitelist = ' '.join(args[2:])
                 self.removeFromList(whitelist, 'Setup', 'whitelist', target)
-            elif args[1] == 'owner':
-                owner = ' '.join(args[2:])
-                self.removeFromList(owner, 'Setup', 'owner', nick)
         elif args[0] == 'huggle': # Huggle
-            try:
+            if len(args) == 2:
                 who = args[1]
-                self.connection.action(self.channel, 'huggles ' + who)
-            except:
-                self.msg('lolfail', channel)
-        elif args[0] == 'die': # Die
-            if self.getCloak(e.source()) not in config.get('Setup', 'owner').split('<|>'):
-                self.msg('You can\'t kill me; you\'re not my owner!', target)
+                self.connection.action(self.channel, 'huggles %s' % who)
             else:
-                print 'Yes, you\'re my owner.'
-                if len(args)>=2:
+                raise CommanderError, 'who is the target of these malicious huggles?!'
+        elif args[0] == 'die': # Die
+            if self.channels[self.channel].is_oper(nick):
+                print '%s is opped - dying...' % nick
+                if len(args) > 1:
                     quitmsg = ' '.join(args[1:])
                 else:
                     quitmsg = config.get('Setup', 'quitmsg')
                 self.saveConfig()
-                print 'Saved config. Now killing all bots with message: "' + quitmsg + '"...'
+                print 'Saved config. Now killing all bots with message: "%s"' % quitmsg
                 try:
                     rawquitmsg = ':'+quitmsg
                     rcreader.connection.part(rcreader.rcfeed)
                     rcreader.connection.quit()
                     rcreader.disconnect()
                 except:
-                    print 'rc reader didn\'t disconnect'
+                    raise BotDisconnectError("rc reader didn't disconnect")
                 try:
                     bot1.connection.part(bot1.channel, rawquitmsg)
                     bot1.connection.quit(rawquitmsg)
                     bot1.disconnect()
                 except:
-                    print 'bot1 didn\'t disconnect'
+                    raise BotDisconnectError("bot1 didn't disconnect")
                 try:
                     bot2.connection.part(bot2.channel, rawquitmsg)
                     bot2.connection.quit(rawquitmsg)
                     bot2.disconnect()
                 except:
-                    print 'bot2 didn\'t disconnect'
+                    raise BotDisconnectError("bot2 didn't disconnect")
                 print 'Killed. Now exiting...'
-                sys.exit(0)
-        elif args[0] == 'restart': # Restart
-            if self.getCloak(e.source()) not in config.get('Setup', 'owner').split('<|>'):
-                self.msg('You can\'t restart me; you\'re not my owner!', target)
+                sys.exit(0) # 0 is a normal exit status
             else:
-                print 'Yes, you\'re my owner'
+                self.msg("You can't kill me; you're not opped!", target)
+        elif args[0] == 'restart': # Restart
+            if self.channels[self.channel].is_oper(nick):
+                print '%s is opped - restarting...' % nick
                 self.saveConfig()
                 print 'Saved config for paranoia.'
                 if len(args) == 1:
                     quitmsg = config.get('Setup', 'quitmsg')
-                    print 'Restarting all bots with message: '+quitmsg
+                    print 'Restarting all bots with message: "%s"' % quitmsg
                     rawquitmsg = ':'+quitmsg
                     try:
                         rcreader.connection.part(rcfeed)
@@ -342,21 +359,21 @@ class FreenodeBot(SingleServerIRCBot):
                         rcreader.disconnect()
                         BotThread(rcreader).start()
                     except:
-                        print 'rcreader didn\'t recover: %s' % sys.exc_info()[1]
+                        raise BotRestartError("rcreader didn't recover: %s" % sys.exc_info()[1])
                     try:
                         bot1.connection.part(mainchannel, rawquitmsg)
                         bot1.connection.quit()
                         bot1.disconnect()
                         BotThread(bot1).start()
                     except:
-                        print 'bot1 didn\'t recover: %s' % sys.exc_info()[1]
+                        raise BotRestartError("bot1 didn't recover: %s" % sys.exc_info()[1])
                     try:
                         bot2.connection.part(mainchannel, rawquitmsg)
                         bot2.connection.quit()
                         bot2.disconnect()
                         BotThread(bot2).start()
                     except:
-                        print 'bot2 didn\'t recover: %s' % sys.exc_info()[1]
+                        raise BotRestartError("bot2 didn't recover: %s" % sys.exc_info()[1])
                 elif len(args) > 1 and args[1] == 'rc':
                     self.msg('Restarting rc reader', target)
                     try:
@@ -365,9 +382,11 @@ class FreenodeBot(SingleServerIRCBot):
                         rcreader.disconnect()
                         BotThread(rcreader).start()
                     except:
-                        print 'rcreader didn\'t recover: %s' % sys.exc_info()[1]
+                        raise BotRestartError("rcreader didn't recover: %s" % sys.exc_info()[1])
                 else:
-                    print 'This shouldn\'t happen'
+                    raise CommanderError, "Invalid command"
+            else:
+                self.msg("You can't restart me; you're not opped!", target)
 
 ##    def integrityCheck(self):
 ##        sectionlist = config.sections()
@@ -386,30 +405,33 @@ class FreenodeBot(SingleServerIRCBot):
 ##                self.saveConfig()
 
     def saveConfig(self):
-        print 'saveConfig(self)'
-        configFile = open(os.path.expanduser('~/SULWatcher/SULWatcher.ini'), 'w')
-        config.write(configFile)
-        configFile.close()
-        print 'done!'
+        print "saveConfig(self)"
+        try:
+            configFile = open('SULWatcher.ini', 'w')
+            config.write(configFile)
+            configFile.close()
+            print "Done!"
+        except: # Should be specific about what might go wrong
+            print "Couldn't save the config file!"
+            # Should raise a specific exception here?
 
     def getIndex(self, option, value):
-        print 'getIndex(self, \'%s\', \'%s\')' % (option, value)
+        print "getIndex(self, '%s', '%s')" % (option, value)
         for section in config.sections():
             if section != 'Setup':
                 if config.get(section, option) == value:
                     return section
 
     def addRegex(self, regex, cloak, target):
-        print 'addRegex(self, \'%s\', \'%s\', \'%s\')' % (regex, cloak, target)
+        print "addRegex(self, '%s', '%s', '%s')" % (regex, cloak, target)
         for section in config.sections():
             if section != 'Setup':
                 if config.get(section, 'regex') == regex:
                     adder = config.get(section, 'adder')
                     if config.has_option(section, 'reason'):
                         reason = config.get(section, 'reason')
-                    try:
                         self.msg('%s is already listed as a regex. It was added by %s with a note: "%s".' % (regex, adder, reason), target)
-                    except:
+                    else:
                         self.msg('%s is already listed as a regex. It was added by %s.' % (regex, adder), target)
                     break
         for i in range(0,len(config.sections())):
@@ -422,7 +444,7 @@ class FreenodeBot(SingleServerIRCBot):
         self.msg('%s added %s to the list of regexes. If you would like to set a reason, say "SULWatcher: add reason %s reason for adding the regex".' % (cloak, regex, self.getIndex('regex', regex)), target)
 
     def removeRegex(self, regex, target):
-        print 'removeRegex(self, \'%s\', \'%s\')' % (regex, target)
+        print "removeRegex(self, '%s', '%s')" % (regex, target)
         found = False
         for section in config.sections():
             if section != 'Setup':
@@ -431,16 +453,16 @@ class FreenodeBot(SingleServerIRCBot):
                     self.saveConfig()
                     found = True
         if found == True:
-            self.msg('Removed %s from regex list.' % regex, target)
+            self.msg("Removed %s from regex list." % regex, target)
         else:
-            self.msg('%s isn\'t in the regex list.' % regex, target)
+            self.msg("%s isn't in the regex list." % regex, target)
             
     def setConfig(self, section, option, value):
-        print 'setConfig(self, \'%s\', \'%s\', \'%s\')' % (section, option, value)
+        print "setConfig(self, '%s', '%s', '%s')" % (section, option, value)
         config.set(section, option, value)
 
     def addToList(self, who, section, groupname, target):
-        print 'addToLost(self, \'%s\', \'%s\', \'%s\', \'%s\')' % (who, section, groupname, target)
+        print "addToLost(self, '%s', '%s', '%s', '%s')" % (who, section, groupname, target)
         list = config.get(section, groupname).split('<|>')
         if not who in list:
             list.append(who)
@@ -452,7 +474,7 @@ class FreenodeBot(SingleServerIRCBot):
             self.msg('%s already in %s.' % (who, groupname), target)
 
     def removeFromList(self, who, section, groupname, target):
-        print 'removeFromList(self, \'%s\', \'%s\', \'%s\', \'%s\')' % (who, section, groupname, target)
+        print "removeFromList(self, '%s', '%s', '%s', '%s')" % (who, section, groupname, target)
         list = config.get(section, groupname).split('<|>')
         if who in list:
             list.remove(who)
@@ -464,13 +486,13 @@ class FreenodeBot(SingleServerIRCBot):
             self.msg('%s not in %s.' % (who, groupname), target)
 
     def msg(self, message, target=None):
-        #print 'msg(self, \'%s\', \'%s\')' % (message, target)
+        #print "msg(self, '%s', '%s')" % (message, target)
         if not target:
             target = self.channel
         self.connection.privmsg(target, message)
 
     def getCloak(self, doer):
-        print 'getCloak(self, \'%s\')' % doer
+        print "getCloak(self, '%s')" % doer
         if re.search('@', doer):
             return doer.split('@')[1]
 
@@ -495,7 +517,7 @@ class WikimediaBot(SingleServerIRCBot):
 
     def on_ctcp(self, c, e):
         if e.arguments()[0] == 'VERSION':
-            c.ctcp_reply(nm_to_n(e.source()), 'Bot for watching stuff in ' + channel)
+            c.ctcp_reply(nm_to_n(e.source()), 'Bot for watching stuff in %s' % channel)
         elif e.arguments()[0] == 'PING':
             if len(e.arguments()) > 1: c.ctcp_reply(nm_to_n(e.source()),"PING " + e.arguments()[1])
         
@@ -511,19 +533,19 @@ class WikimediaBot(SingleServerIRCBot):
             if not globals()['lastsulname'] or globals()['lastsulname'] != sulname:
                 bad = False
                 good = False
-                #print sulname + "@" + sulwiki
+                #print "%s@%s" % (sulname, sulwiki)
                 badwords = []
                 for section in config.sections():
                     if section != 'Setup':
                         badwords.append(re.compile(config.get(section, 'regex'), re.IGNORECASE))
                 matches = []
                 for bw in badwords:
-                    if (bw.search(sulname)):#regex!
+                    if (bw.search(sulname)): # Regex!
                         bad = True
                         matches.append(bw.pattern)
                 for wl in config.get('Setup', 'whitelist').split('<|>'):
                     if sulname == wl:
-                        print '(skipped ' + sulname + '; user is whitelisted)'
+                        print '(skipped %s; user is whitelisted)' % sulname
                         good = True
                 if not bad and not good:
                     if globals()['lastbot'] != 1:
@@ -540,7 +562,7 @@ class WikimediaBot(SingleServerIRCBot):
                         bot2.msg("\x0303%s\x03@%s \x0305\x02matches badword %s\017: \x0302https://secure.wikimedia.org/wikipedia/meta/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, '; '.join(matches), urllib.quote(sulname)))
                         globals()['lastbot'] = 2
             globals()['lastsulname'] = sulname
-        except:
+        except: # Should be specific about what might happen here
             print 'RC reader error: %s' % sys.exc_info()[1]
 
 class BotThread(threading.Thread):
@@ -555,21 +577,26 @@ class BotThread(threading.Thread):
         bot.start()
 
 def main():
-    global bot1, rcreader, bot2, config, nickname, alias, password, mainchannel, mainserver, wmserver, rcfeed, opernick, operpass
+    global bot1, rcreader, bot2, config, nickname, alias, password, mainchannel, mainserver, wmserver, rcfeed
     config = ConfigParser.ConfigParser()
-    config.read(os.path.expanduser('~/SULWatcher/SULWatcher.ini'))
+    config.read('SULWatcher.ini')
     nickname = config.get('Setup', 'nickname')
-    opernick = config.get('Setup', 'opernick')
-    operpass = config.get('Setup', 'operpass')
     alias = config.get('Setup', 'alias')
     password = config.get('Setup', 'password')
     mainchannel = config.get('Setup', 'channel')
     mainserver = config.get('Setup', 'server')
     wmserver = config.get('Setup', 'wmserver')
     rcfeed = config.get('Setup', 'rcfeed')
-    bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, opernick, operpass, 8001)
+    if config.has_option('Setup', 'opernick') and config.has_option('Setup','operpass'):
+        global opernick, operpass
+        opernick = config.get('Setup', 'opernick')
+        operpass = config.get('Setup', 'operpass')
+        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001, opernick, operpass)
+        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001, opernick, operpass)
+    else:
+        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001)
+        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001)
     BotThread(bot1).start()
-    bot2 = FreenodeBot(mainchannel, alias, mainserver, password, opernick, operpass, 8001)
     BotThread(bot2).start()
     time.sleep(6) # The Freenode bots connect comparatively slowly & have a 5s delay to identify to services before joining channels
     rcreader = WikimediaBot(rcfeed, nickname, wmserver, 6667)
@@ -577,12 +604,12 @@ def main():
 
 if __name__ == "__main__":
     global bot1, rcreader, bot2, config
-    #main()
-    try:
-        main()
-    except:
-        print '\nUnexpected error: %s' % sys.exc_info()[1]
-        bot1.die()
-        rcreader.die()
-        bot2.die()
-        sys.exit()
+    main()
+##    try:
+##        main()
+##    except: # Should be specific about what kinds of errors actually necessitate dying and which ones have better failure modes
+##        print '\nUnexpected error: %s' % sys.exc_info()[1]
+##        bot1.die()
+##        rcreader.die()
+##        bot2.die()
+##        sys.exit()
