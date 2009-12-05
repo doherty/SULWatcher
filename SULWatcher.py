@@ -89,8 +89,8 @@ class FreenodeBot(SingleServerIRCBot):
                 if self.channels[self.channel].is_voiced(nick) or self.channels[self.channel].is_oper(nick):
                     try:
                         self.do_command(e, command, target)
-                    except CommanderError as error:
-                        print 'CommanderError: %s' % error.value
+                    except CommanderError, e:
+                        print 'CommanderError: %s' % e.value
                         self.msg('You have to follow the proper syntax. See \x0302http://toolserver.org/~stewardbots/SULWatcher\x03', nick)
                     except:
                         print 'Error: %s' % sys.exc_info()[1]
@@ -113,8 +113,8 @@ class FreenodeBot(SingleServerIRCBot):
                 if self.channels[self.channel].is_voiced(nick) or self.channels[self.channel].is_oper(nick):
                     try:
                         self.do_command(e, command, target)
-                    except CommanderError as error:
-                        print 'CommanderError: %s' % error.value
+                    except CommanderError, e:
+                        print 'CommanderError: %s' % e.value
                         self.msg('You have to follow the proper syntax. See \x0302http://toolserver.org/~stewardbots/SULWatcher\x03', target)
                     except:
                         print 'Error: %s' % sys.exc_info()[1]
@@ -144,7 +144,7 @@ class FreenodeBot(SingleServerIRCBot):
                         self.msg('"%s" matches regex "%s"' % (string, probe) , target)
                     else:
                         self.msg('"%s" does not match regex "%s"' % (string, probe) , target)
-                except IndexError as error:
+                except IndexError, e:
                     print 'IndexError: %s' % sys.exc_info()[1]
                     raise CommanderError("You didn't use the right format for testing: 'SULWatcher: test <string to test> regex \bregular ?expression\b'")
             elif len(args)==1:
@@ -410,10 +410,11 @@ class FreenodeBot(SingleServerIRCBot):
             configFile = open('SULWatcher.ini', 'w')
             config.write(configFile)
             configFile.close()
-            print "Done!"
-        except: # Should be specific about what might go wrong
-            print "Couldn't save the config file!"
+        except IOError, (errno, strerror):
+            print "IOError(%s): %s" % (errno, strerror)
             # Should raise a specific exception here?
+        else:
+            print "Done!"
 
     def getIndex(self, option, value):
         print "getIndex(self, '%s', '%s')" % (option, value)
