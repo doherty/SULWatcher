@@ -212,15 +212,12 @@ class FreenodeBot(SingleServerIRCBot):
                 section = args[1]
                 if args[2] == 'regex' or args[2] == 'badword':
                     newregex = ' '.join(args[3:])
-                    if config.has_option(section, 'reason'):
-                        oldreason = config.get(section, 'reason')
-                    else:
-                        oldreason = None
                     adder = self.getCloak(e.source())
                     oldregex = config.get(section, 'regex')
                     self.removeRegex(oldregex, target)
                     self.addRegex(newregex, adder, target)
-                    if oldreason is not None:
+                    if config.has_section(section, 'reason'):
+                        oldreason = config.get(section, 'reason')
                         self.setConfig(section, 'reason', oldreason)
                         self.saveConfig()
                         self.msg('I kept the old reason ("%s"), but you can change it with "SULWatcher: edit %s reason <reason>".' % (oldreason, section), target)
