@@ -337,7 +337,8 @@ class FreenodeBot(SingleServerIRCBot):
                 except:
                     raise BotDisconnectError("bot2 didn't disconnect")
                 print 'Killed. Now exiting...'
-                sys.exit(0) # 0 is a normal exit status
+                #sys.exit(0) # 0 is a normal exit status
+                os._exit(os.EX_OK) # really really kill things off!!
             else:
                 self.msg("You can't kill me; you're not opped!", target)
         elif args[0] == 'restart': # Restart
