@@ -160,7 +160,7 @@ class FreenodeBot(SingleServerIRCBot):
                                 self.msg('The regex %s (#%s) was added by %s with the note: "%s".' % (badword, self.getIndex('regex', badword), adder, config.get(section, 'reason')), target)
                             else:
                                 self.msg('The regex %s (#%s) was added by %s with no reason.' % (badword, self.getIndex('regex', badword), adder), target)
-                            break # was return
+                            return # Was break
                 self.msg('%s is not listed. You can add it by saying "SULWatcher: add regex %s"' % (badword, badword), target)
             elif args[1] == 'match' or args[1] == 'matches':
                 string = ' '.join(args[2:])
