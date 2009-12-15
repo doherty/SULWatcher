@@ -156,7 +156,7 @@ class FreenodeBot(SingleServerIRCBot):
                     if section != 'Setup':
                         if config.get(section, 'regex') == badword:
                             adder = config.get(section, 'adder')
-                            if config.has_option(index,'reason'):
+                            if config.has_option(section,'reason'):
                                 self.msg('The regex %s (#%s) was added by %s with the note: "%s".' % (badword, self.getIndex('regex', badword), adder, config.get(section, 'reason')), target)
                             else:
                                 self.msg('The regex %s (#%s) was added by %s with no reason.' % (badword, self.getIndex('regex', badword), adder), target)
