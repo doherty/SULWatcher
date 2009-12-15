@@ -216,7 +216,7 @@ class FreenodeBot(SingleServerIRCBot):
                     oldregex = config.get(section, 'regex')
                     self.removeRegex(oldregex, target)
                     self.addRegex(newregex, adder, target)
-                    if config.has_section(section, 'reason'):
+                    if config.has_section(section):
                         oldreason = config.get(section, 'reason')
                         self.setConfig(section, 'reason', oldreason)
                         self.saveConfig()
