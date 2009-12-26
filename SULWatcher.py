@@ -23,16 +23,9 @@ class CommanderError(SULWatcherException):
     def __str__(self):
         return repr(self.value)
 
-class BotDisconnectError(SULWatcherException):
-    """This exception is raised when a bot cannot disconnect."""
+class BotConnectionError(SULWatcherException):
+    """This exception is raised when a bot has some kind of connection problem."""
     def __init__(self,value):
-        self.value = value
-    def __str__(self):
-        return repr(self.value)
-
-class BotReconnectError(SULWatcherException):
-    """This exception is raised when a bot doesn't reconnect properly"""
-    def __init(self,value):
         self.value = value
     def __str__(self):
         return repr(self.value)
@@ -49,17 +42,20 @@ class FreenodeBot(SingleServerIRCBot):
             self.operpass = operpass
         
     def on_error(self, c, e):
+        """This is called when an IRC error happens. I don't really know what that means :D"""
         print 'Error:\nArguments: %s\nTarget: %s' % (e.arguments(), e.target())
         self.die()
         sys.exit()
     
     def on_nicknameinuse(self, c, e):
+        """Called when the bot's desired nick is in use."""
         c.nick(c.get_nickname() + "_")
         c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
         c.nick(self.nickname) # FIX -- what is broken? 0_o
         c.privmsg("NickServ",'IDENTIFY %s' % self.password)
 
     def on_welcome(self, c, e):
+        """Called when the bot is connected to the server successfully."""
         c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
         c.privmsg("NickServ",'IDENTIFY %s' % self.password)
         if self.opernick and self.operpass:
@@ -71,12 +67,14 @@ class FreenodeBot(SingleServerIRCBot):
         c.join(self.channel)
 
     def on_ctcp(self, c, e):
+        """Called when a CTCP event happens to the bot."""
         if e.arguments()[0] == "VERSION":
             c.ctcp_reply(nm_to_n(e.source()),"Bot for watching stuff in %s" % self.channel)
         elif e.arguments()[0] == "PING":
             if len(e.arguments()) > 1: c.ctcp_reply(nm_to_n(e.source()),"PING " + e.arguments()[1])
 
     def on_privmsg(self, c, e):
+        """Called when the bot receives a private message (ie to the bot's nick)."""
         #timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
         nick = nm_to_n(e.source())
         target = nick # If they did the command in PM, keep replies in PM
@@ -101,6 +99,7 @@ class FreenodeBot(SingleServerIRCBot):
                     self.msg('Sorry, you need to be voiced to give the bot commands.', nick)
 
     def on_pubmsg(self, c, e):
+        """Called when the bot receives a public message (ie in a channel)."""
         #timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
         nick = nm_to_n(e.source())
         target = e.target() # If they issued the command in a channel, replies should go to the channel
@@ -125,6 +124,11 @@ class FreenodeBot(SingleServerIRCBot):
                     self.msg('Sorry, you need to be voiced to give the bot commands.' , nick) # Let them know they need to be voiced
 
     def do_command(self, e, cmd, target):
+        """
+        Called to actually perform some command - parses the cmd (the text of the command) and does it (or not).
+        This should eventually use the following hierarchy: do_command() -> _auth() -> _do_whatever(), raising
+        appropriate exceptions along the way.
+        """
         print "do_command(self, e, '%s', '%s')" % (cmd, target)
         nick = nm_to_n(e.source())
         c = self.connection
@@ -323,19 +327,19 @@ class FreenodeBot(SingleServerIRCBot):
                     rcreader.connection.quit()
                     rcreader.disconnect()
                 except:
-                    raise BotDisconnectError("rc reader didn't disconnect")
+                    raise BotConnectionError("rc reader didn't disconnect")
                 try:
                     bot1.connection.part(bot1.channel, rawquitmsg)
                     bot1.connection.quit(rawquitmsg)
                     bot1.disconnect()
                 except:
-                    raise BotDisconnectError("bot1 didn't disconnect")
+                    raise BotConnectionError("bot1 didn't disconnect")
                 try:
                     bot2.connection.part(bot2.channel, rawquitmsg)
                     bot2.connection.quit(rawquitmsg)
                     bot2.disconnect()
                 except:
-                    raise BotDisconnectError("bot2 didn't disconnect")
+                    raise BotConnectionError("bot2 didn't disconnect")
                 print 'Killed. Now exiting...'
                 #sys.exit(0) # 0 is a normal exit status
                 os._exit(os.EX_OK) # really really kill things off!!
@@ -386,6 +390,7 @@ class FreenodeBot(SingleServerIRCBot):
                 self.msg("You can't restart me; you're not opped!", target)
 
 ##    def integrityCheck(self):
+##        """This would be called to check and fix up the .ini file, but it was written while the author was sleeping, so it will only work in his dreams."""
 ##        sectionlist = config.sections()
 ##        sectionlist = sectionlist.remove('Setup').sort()
 ##        for i in range(0,len(sectionlist)):
@@ -402,6 +407,7 @@ class FreenodeBot(SingleServerIRCBot):
 ##                self.saveConfig()
 
     def saveConfig(self):
+        """Called to save the config file."""
         print "saveConfig(self)"
         try:
             configFile = open('SULWatcher.ini', 'w')
@@ -414,6 +420,9 @@ class FreenodeBot(SingleServerIRCBot):
             print "Done!"
 
     def getIndex(self, option, value):
+        """
+        Given an option and a value, it returns the section number which has it.
+        """
         print "getIndex(self, '%s', '%s')" % (option, value)
         for section in config.sections():
             if section != 'Setup':
@@ -421,6 +430,7 @@ class FreenodeBot(SingleServerIRCBot):
                     return section
 
     def addRegex(self, regex, cloak, target):
+        """Adds a regex to the config file."""
         print "addRegex(self, '%s', '%s', '%s')" % (regex, cloak, target)
         for section in config.sections():
             if section != 'Setup':
@@ -442,6 +452,7 @@ class FreenodeBot(SingleServerIRCBot):
         self.msg('%s added %s to the list of regexes. If you would like to set a reason, say "SULWatcher: add reason %s reason for adding the regex".' % (cloak, regex, self.getIndex('regex', regex)), target)
 
     def removeRegex(self, regex, target):
+        """Removes a regex from the config file."""
         print "removeRegex(self, '%s', '%s')" % (regex, target)
         found = False
         for section in config.sections():
@@ -456,10 +467,12 @@ class FreenodeBot(SingleServerIRCBot):
             self.msg("%s isn't in the regex list." % regex, target)
             
     def setConfig(self, section, option, value):
+        """Sets a config entry."""
         print "setConfig(self, '%s', '%s', '%s')" % (section, option, value)
         config.set(section, option, value)
 
     def addToList(self, who, section, groupname, target):
+        """Adds something to a list in a super-hacky way... is this even needed any longer?"""
         print "addToLost(self, '%s', '%s', '%s', '%s')" % (who, section, groupname, target)
         list = config.get(section, groupname).split('<|>')
         if not who in list:
@@ -472,6 +485,7 @@ class FreenodeBot(SingleServerIRCBot):
             self.msg('%s already in %s.' % (who, groupname), target)
 
     def removeFromList(self, who, section, groupname, target):
+        """Removes something from our sooper-dooper list. As above, is this still needed?"""
         print "removeFromList(self, '%s', '%s', '%s', '%s')" % (who, section, groupname, target)
         list = config.get(section, groupname).split('<|>')
         if who in list:
@@ -484,17 +498,22 @@ class FreenodeBot(SingleServerIRCBot):
             self.msg('%s not in %s.' % (who, groupname), target)
 
     def msg(self, message, target=None):
+        """Sends an IRC message."""
         #print "msg(self, '%s', '%s')" % (message, target)
         if not target:
             target = self.channel
         self.connection.privmsg(target, message)
 
     def getCloak(self, doer):
+        """Returns the cloak part of a usermask."""
         print "getCloak(self, '%s')" % doer
         if re.search('@', doer):
             return doer.split('@')[1]
 
 class WikimediaBot(SingleServerIRCBot):
+    """A WikimediaBot class, which reads from the IRC channel, parses, filters, then outputs via one of
+    two FreenodeBot instances (to avoid flooding the connection).
+    """
     def __init__(self, rcfeed, nickname, server, port=6667):
         SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
         self.server = server
@@ -504,22 +523,27 @@ class WikimediaBot(SingleServerIRCBot):
         globals()['lastbot'] = 1
 
     def on_error(self, c, e):
+        """Called on an IRC error."""
         print e.target()
         #self.die()
     
     def on_nicknameinuse(self, c, e):
+        """Called when the desired nick is in use."""
         c.nick(c.get_nickname() + '_')
 
     def on_welcome(self, c, e):
+        """Called when successfully connected to the server."""
         c.join(self.rcfeed)
 
     def on_ctcp(self, c, e):
+        """Called on any CTCP event."""
         if e.arguments()[0] == 'VERSION':
             c.ctcp_reply(nm_to_n(e.source()), 'Bot for watching stuff in %s' % channel)
         elif e.arguments()[0] == 'PING':
             if len(e.arguments()) > 1: c.ctcp_reply(nm_to_n(e.source()),"PING " + e.arguments()[1])
         
     def on_pubmsg(self, c, e):
+        """Called when a public message (ie in a channel) happens."""
         a = e.arguments()[0]
         #bot1.msg(a)
         # Parsing the rcbot output: \x0314[[\x0307Usu\xc3\xa1rio:Liliaan\x0314]]\x034@ptwiki\x0310 \x0302http://pt.wikipedia.org/wiki/Usu%C3%A1rio:Liliaan\x03 \x035*\x03 \x0303Liliaan\x03 \x035*\x03
@@ -564,6 +588,7 @@ class WikimediaBot(SingleServerIRCBot):
             print 'RC reader error: %s' % sys.exc_info()[1]
 
 class BotThread(threading.Thread):
+    """A threading class for bots"""
     def __init__ (self, bot):
         self.b=bot
         threading.Thread.__init__ (self)
@@ -575,6 +600,7 @@ class BotThread(threading.Thread):
         bot.start()
 
 def main():
+    """A main method to set up our globals, read and set configuration, and get the bots going."""
     global bot1, rcreader, bot2, config, nickname, alias, password, mainchannel, mainserver, wmserver, rcfeed
     config = ConfigParser.ConfigParser()
     config.read('SULWatcher.ini')
@@ -601,6 +627,7 @@ def main():
     BotThread(rcreader).start() # Can cause ServerNotConnectedError
 
 if __name__ == "__main__":
+    """Do it."""
     global bot1, rcreader, bot2, config
     main()
 ##    try:
