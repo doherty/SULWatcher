@@ -618,11 +618,11 @@ def main():
         global opernick, operpass
         opernick = config.get('Setup', 'opernick')
         operpass = config.get('Setup', 'operpass')
-        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001, opernick, operpass)
-        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001, opernick, operpass)
+        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 6667, opernick, operpass)
+        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 6667, opernick, operpass)
     else:
-        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001)
-        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001)
+        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 6667)
+        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 6667)
     BotThread(bot1).start()
     BotThread(bot2).start()
     time.sleep(6) # The Freenode bots connect comparatively slowly & have a 5s delay to identify to services before joining channels
