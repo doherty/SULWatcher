@@ -40,6 +40,9 @@ class FreenodeBot(SingleServerIRCBot):
         if opernick and operpass:
             self.opernick = opernick
             self.operpass = operpass
+        else:
+            self.opernick = None
+            self.operpass = None
         
     def on_error(self, c, e):
         """This is called when an IRC error happens. I don't really know what that means :D"""
