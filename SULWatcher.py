@@ -63,16 +63,12 @@ class BotReconnectError(SULWatcherException):
         return repr(self.value)
 
 class FreenodeBot(SingleServerIRCBot):
-    def __init__(self, channel, nickname, server, password, port=6667, opernick=None, operpass=None):
+    def __init__(self, channel, nickname, server, password, port=6667):
         SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
         self.server = server
         self.channel = channel
         self.nickname = nickname
         self.password = password
-        if opernick and operpass:
-            self.opernick = opernick
-            self.operpass = operpass
-            
         self.buildRegex()
         self.buildWhitelist()
         
@@ -90,9 +86,6 @@ class FreenodeBot(SingleServerIRCBot):
     def on_welcome(self, c, e):
         c.privmsg('NickServ','GHOST %s %s' % (self.nickname, self.password))
         c.privmsg('NickServ','IDENTIFY %s' % self.password)
-        if self.opernick and self.operpass:
-            c.oper(self.opernick,self.operpass)
-            print 'c.oper(%s, %s)' % (self.opernick, self.operpass)
         print 'Sent identification data; sleeping 5s...'
         time.sleep(5) # let identification succeed before joining channels
         print 'Slept 5s; let\'s hope identification succeeded!'
@@ -712,17 +705,8 @@ def main():
     mainserver = getConfig('server')
     wmserver = getConfig('wmserver')
     rcfeed = getConfig('rcfeed')
-       
-    if getConfig('opernick') and getConfig('operpass'):
-        global opernick, operpass
-        opernick = getConfig('opernick')
-        operpass = getConfig('operpass')
-
-        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001, opernick, operpass)
-        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001, opernick, operpass)
-    else:
-        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001)
-        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001)
+    bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001)
+    bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001)
     BotThread(bot1).start()
     BotThread(bot2).start()
     time.sleep(6) # The Freenode bots connect comparatively slowly & have a 5s delay to identify to services before joining channels
