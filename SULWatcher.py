@@ -6,12 +6,37 @@
 # CREDITS:      Mike.lifeguard, Erwin, Dungodung (Filip Maljkovic)
 #
 
-import sys, os, re, time, string, threading, thread, urllib, math
-import ConfigParser
+import sys, os, re, time, string, threading, thread, urllib
+import MySQLdb, MySQLdb.cursors
 # Needs python-irclib
 from ircbot import SingleServerIRCBot
 from irclib import nm_to_n
 
+class querier:
+    """A wrapper for MySQLdb"""
+    
+    def __init__(self, *args, **kwargs):
+        if 'read_default_file' not in kwargs:
+             kwargs['read_default_file'] = '~/.my.cnf'
+
+        kwargs['cursorclass'] = MySQLdb.cursors.DictCursor
+
+        self.db = MySQLdb.connect(*args, **kwargs)
+        self.db.autocommit(True) # Autocommit transactions
+
+        self.cursor = None
+    
+    # Execute a query
+    def do(self, *args, **kwargs):          
+        self.cursor = self.db.cursor()
+        self.cursor.execute(*args, **kwargs)
+
+        results = tuple(self.cursor.fetchall())
+
+        self.cursor.close()
+
+        return results
+            
 class SULWatcherException(Exception):
     """A single base exception class for all other SULWatcher errors."""
     pass
@@ -23,9 +48,16 @@ class CommanderError(SULWatcherException):
     def __str__(self):
         return repr(self.value)
 
-class BotConnectionError(SULWatcherException):
-    """This exception is raised when a bot has some kind of connection problem."""
+class BotDisconnectError(SULWatcherException):
+    """This exception is raised when a bot cannot disconnect."""
     def __init__(self,value):
+        self.value = value
+    def __str__(self):
+        return repr(self.value)
+
+class BotReconnectError(SULWatcherException):
+    """This exception is raised when a bot doesn't reconnect properly"""
+    def __init(self,value):
         self.value = value
     def __str__(self):
         return repr(self.value)
@@ -40,49 +72,44 @@ class FreenodeBot(SingleServerIRCBot):
         if opernick and operpass:
             self.opernick = opernick
             self.operpass = operpass
-        else:
-            self.opernick = None
-            self.operpass = None
+            
+        self.buildRegex()
+        self.buildWhitelist()
         
     def on_error(self, c, e):
-        """This is called when an IRC error happens. I don't really know what that means :D"""
         print 'Error:\nArguments: %s\nTarget: %s' % (e.arguments(), e.target())
         self.die()
         sys.exit()
     
     def on_nicknameinuse(self, c, e):
-        """Called when the bot's desired nick is in use."""
-        c.nick(c.get_nickname() + "_")
-        c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
+        c.nick(c.get_nickname() + '_')
+        c.privmsg('NickServ','GHOST %s %s' % (self.nickname, self.password))
         c.nick(self.nickname) # FIX -- what is broken? 0_o
-        c.privmsg("NickServ",'IDENTIFY %s' % self.password)
+        c.privmsg('NickServ','IDENTIFY %s' % self.password)
 
     def on_welcome(self, c, e):
-        """Called when the bot is connected to the server successfully."""
-        c.privmsg("NickServ",'GHOST %s %s' % (self.nickname, self.password))
-        c.privmsg("NickServ",'IDENTIFY %s' % self.password)
+        c.privmsg('NickServ','GHOST %s %s' % (self.nickname, self.password))
+        c.privmsg('NickServ','IDENTIFY %s' % self.password)
         if self.opernick and self.operpass:
             c.oper(self.opernick,self.operpass)
-            print "c.oper(%s,%s)" % (self.opernick,self.operpass)
-        print "Sent identification data; sleeping 5s..."
+            print 'c.oper(%s, %s)' % (self.opernick, self.operpass)
+        print 'Sent identification data; sleeping 5s...'
         time.sleep(5) # let identification succeed before joining channels
-        print "Slept 5s; let's hope identification succeeded!"
+        print 'Slept 5s; let\'s hope identification succeeded!'
         c.join(self.channel)
 
     def on_ctcp(self, c, e):
-        """Called when a CTCP event happens to the bot."""
-        if e.arguments()[0] == "VERSION":
-            c.ctcp_reply(nm_to_n(e.source()),"Bot for watching stuff in %s" % self.channel)
-        elif e.arguments()[0] == "PING":
-            if len(e.arguments()) > 1: c.ctcp_reply(nm_to_n(e.source()),"PING " + e.arguments()[1])
+        if e.arguments()[0] == 'VERSION':
+            c.ctcp_reply(nm_to_n(e.source()), 'Bot for watching stuff in %s.' % self.channel)
+        elif e.arguments()[0] == 'PING':
+            if len(e.arguments()) > 1: c.ctcp_reply(nm_to_n(e.source()), 'PING ' + e.arguments()[1])
 
     def on_privmsg(self, c, e):
-        """Called when the bot receives a private message (ie to the bot's nick)."""
         #timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
         nick = nm_to_n(e.source())
         target = nick # If they did the command in PM, keep replies in PM
         #who = '<%s/%s>' % (e.target(), nick)
-        a = e.arguments()[0].split(":", 1)
+        a = e.arguments()[0].split(':', 1)
         #print '%s %s: %s' % (timestamp, target, a)
         if a[0] == self.nickname:
             if len(a) == 2:
@@ -102,12 +129,11 @@ class FreenodeBot(SingleServerIRCBot):
                     self.msg('Sorry, you need to be voiced to give the bot commands.', nick)
 
     def on_pubmsg(self, c, e):
-        """Called when the bot receives a public message (ie in a channel)."""
         #timestamp = '[%s] ' % time.strftime('%d.%m.%Y %H:%M:%S', time.localtime(time.time()))
         nick = nm_to_n(e.source())
         target = e.target() # If they issued the command in a channel, replies should go to the channel
         #who = '<%s/%s>' % (target, nick)
-        a = e.arguments()[0].split(":", 1)
+        a = e.arguments()[0].split(':', 1)
         #print '%s %s: %s' % (timestamp, target, a)
         if a[0] == self.nickname:
             if len(a) == 2:
@@ -127,12 +153,9 @@ class FreenodeBot(SingleServerIRCBot):
                     self.msg('Sorry, you need to be voiced to give the bot commands.' , nick) # Let them know they need to be voiced
 
     def do_command(self, e, cmd, target):
-        """
-        Called to actually perform some command - parses the cmd (the text of the command) and does it (or not).
-        This should eventually use the following hierarchy: do_command() -> _auth() -> _do_whatever(), raising
-        appropriate exceptions along the way.
-        """
-        print "do_command(self, e, '%s', '%s')" % (cmd, target)
+        global badwords, whitelist
+        
+        print 'do_command(self, e, \'%s\', \'%s\')' % (cmd, target)
         nick = nm_to_n(e.source())
         c = self.connection
         args = cmd.split(' ') # Should use regex to parse here... though that may be tricky
@@ -140,7 +163,7 @@ class FreenodeBot(SingleServerIRCBot):
             args.remove('_')
 
         if args[0] == 'help':
-            self.msg(config.get('Setup', 'help'), nick)
+            self.msg(getConfig('help'), nick)
         elif args[0] == 'test': # Notifications
             if len(args)>=4:
                 try:
@@ -148,7 +171,7 @@ class FreenodeBot(SingleServerIRCBot):
                     string = ' '.join(args[1:i])
                     probe = ' '.join(args[i+1:])
                     if (re.search(probe, string, re.IGNORECASE)):
-                        self.msg('"%s" matches regex "%s"' % (string, probe) , target)
+                        self.msg('"%s" matches case insensitive regex "%s"' % (string, probe) , target)
                     else:
                         self.msg('"%s" does not match regex "%s"' % (string, probe) , target)
                 except IndexError, e:
@@ -159,26 +182,16 @@ class FreenodeBot(SingleServerIRCBot):
         elif args[0] == 'find' or args[0] == 'search':
             if args[1] == 'regex' or args[1] == 'badword':
                 badword = ' '.join(args[2:])
-                for section in config.sections():
-                    if section != 'Setup':
-                        if config.get(section, 'regex') == badword:
-                            adder = config.get(section, 'adder')
-                            if config.has_option(section,'reason'):
-                                self.msg('The regex %s (#%s) was added by %s with the note: "%s".' % (badword, self.getIndex('regex', badword), adder, config.get(section, 'reason')), target)
-                            else:
-                                self.msg('The regex %s (#%s) was added by %s with no reason.' % (badword, self.getIndex('regex', badword), adder), target)
-                            return # Was break
-                self.msg('%s is not listed. You can add it by saying "SULWatcher: add regex %s"' % (badword, badword), target)
+                
+                self.getPrintRegex(regex = badword, target = target)
+
             elif args[1] == 'match' or args[1] == 'matches':
                 string = ' '.join(args[2:])
-                probes = []
-                for section in config.sections():
-                    if section != 'Setup':
-                        probes.append(config.get(section, 'regex'))
+                
                 matches = []
-                for p in probes:
-                    if re.search(p, string, re.IGNORECASE):
-                        matches.append(p)
+                for (idx, bw) in badwords:
+                    if bw.search(string):
+                        matches.append('%s (#%s)' % (bw.pattern, idx))
                 if len(matches) == 0:
                     self.msg('There is no regex which matches the string "%s"' % string, target)
                 else:
@@ -186,129 +199,125 @@ class FreenodeBot(SingleServerIRCBot):
             elif args[1] == 'adder':
                 adder = args[2]
                 regexes = []
-                for section in config.sections():
-                    if section != 'Setup':
-                        if config.get(section, 'adder') == adder:
-                            regexes.append(config.get(section, 'regex'))
+                
+                sql = 'SELECT r_regex FROM p_stewardbots_sulwatcher.regex WHERE r_cloak = %s AND r_active = 1;'
+                args = (adder,)
+                results = db.do(sql, args)
+                
+                regexes = [r['r_regex'] for r in results]                    
+                    
                 if len(regexes) == 0:
                     self.msg('%s has added no regexes.' % adder, target)
                 else:
-                    shortlists = []
                     maxlen = 20
-                    iters = int(math.ceil(float(len(regexes))/maxlen))
-                    for x in range(0, iters):
-                        lower = x*maxlen
-                        upper = (x+1)*maxlen
-                        shortlists.append(regexes[lower:upper])
+                    shortlists = [regexes[i:i + maxlen] for i in range(0, len(regexes), maxlen)]
                     for l in range(0, len(shortlists)):
                         self.msg(r'%s added (%s/%s): %s.' % (adder, l+1, len(shortlists), ", ".join(shortlists[l])), target)
                         time.sleep(2) # Sleep a bit to avoid flooding?
             elif args[1] == 'number':
                 index = args[2]
-                if config.has_section(index):
-                    if config.has_option(index,'reason'):
-                        self.msg('%s: "%s" was added by %s with the reason: "%s"' % (index, config.get(index, 'regex'), config.get(index, 'adder'), config.get(index, 'reason')), target)
-                    else:
-                        self.msg('%s: "%s" was added by %s.' % (index, config.get(index, 'regex'), config.get(index, 'adder')), target)
-                else:
-                    self.msg('%s doesn\'t exist. You can search for the regex itself using "SULWatcher: find regex \bregex\b" or by testing a string against the regexes with "SULWatcher: find matches <string>".' % index, target)
+                
+                self.getPrintRegex(index = index, target = target)
             else:
                 self.msg('You can search for info on a regex by saying "SULWatcher: find regex \bregex\b", or you can find the regex matching a string by saying "SULWatcher: find match String to test".', target)
         elif args[0] == 'edit' or args[0] == 'change':
-            if config.has_section(args[1]):
-                section = args[1]
-                if args[2] == 'regex' or args[2] == 'badword':
-                    newregex = ' '.join(args[3:])
-                    adder = self.getCloak(e.source())
-                    oldregex = config.get(section, 'regex')
-                    self.removeRegex(oldregex, target)
-                    self.addRegex(newregex, adder, target)
-                    if config.has_section(section):
-                        oldreason = config.get(section, 'reason')
-                        self.setConfig(section, 'reason', oldreason)
-                        self.saveConfig()
-                        self.msg('I kept the old reason ("%s"), but you can change it with "SULWatcher: edit %s reason <reason>".' % (oldreason, section), target)
-                    else:
-                        self.msg('There was no reason provided previously - you should add one with "SULWatcher: add reason %s <reason>".' % section, target)
-                elif args[2] == 'note' or args[2] == 'reason':
-                    cloak = self.getCloak(e.source())
-                    if args[3] == '!':
-                        newreason = ' '.join(args[4:])
-                        self.setConfig(section, 'reason', newreason)
-                        self.setConfig(section, 'adder', cloak)
-                        self.saveConfig()
-                        self.msg('OK, I\'ve changed the note on %s to "%s", re-attributing it to %s.' % (config.get(section, 'regex'), newreason, cloak), target)
-                    else:
-                        newreason = ' '.join(args[3:])
-                        adder = config.get(section, 'adder')
-                        regex = config.get(section, 'regex')
-                        if cloak == adder:
-                            self.setConfig(section, 'reason', newreason)
-                            self.saveConfig()
-                            self.msg('OK, changed the note for %s to "%s".' % (regex, newreason), target)
-                        else:
-                            if config.has_option(section, 'reason'):
-                                self.msg('The regex %s was added by %s with the note: "%s". To re-attribute it to you and change the note, say "SULWatcher: edit %s reason ! %s".' % (regex, adder, config.get(section, 'reason'), section, newreason), target)
-                            else:
-                                self.msg('The regex %s was added by %s. To re-attribute it to you and change the note, say "SULWatcher: edit %s reason ! %s".' % (regex, adder, section, newreason), target)
-            else:
-                self.msg('Entry #%s doesn\'t exist. Go fish.' % args[2], target)
+            index = args[1]
+            if args[2] == 'regex' or args[2] == 'badword':
+                regex = ' '.join(args[3:])
+                adder = self.getCloak(e.source())
+                
+                sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_regex = %s, r_cloak = %s, r_timestamp = %s WHERE r_id = %s'
+                args = (regex, adder, time.strftime('%Y%m%d%H%M%S'), index)
+                db.do(sql, args)
+                
+                if db.cursor.rowcount > 0:
+                    self.msg('Regex #%s updated.' % (index), target = target)
+                    self.getPrintRegex(index = index, target = target)
+                    self.buildRegex()
+                    
+            elif args[2] == 'note' or args[2] == 'reason':
+                cloak = self.getCloak(e.source())
+                # Re-attribute regex to cloak.
+                if args[3] == '!':
+                    reason = ' '.join(args[4:])
+                    sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_reason = %s, r_cloak = %s, r_timestamp = %s WHERE r_id = %s'
+                    args = (reason, cloak, time.strftime('%Y%m%d%H%M%S'), index)
+                else:
+                    reason = ' '.join(args[3:])
+                    sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_reason = %s, r_timestamp = %s WHERE r_id = %s'
+                    args = (reason, time.strftime('%Y%m%d%H%M%S'), index)
+       
+                db.do(sql, args)
+                if db.cursor.rowcount > 0:
+                    self.msg('Regex #%s updated.' % (index), target = target)
+                    self.getPrintRegex(index = index, target = target)
+            elif args[2] == 'enable' or args[2] == 'active':
+                self.enableRegex(index, target)
+            elif args[2] == 'case' or args[2] == 'casesensitive':
+                if args[3] == 'true':
+                    sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_case = 1, r_timestamp = %s WHERE r_id = %s'
+                else:
+                    sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_case = 0, r_timestamp = %s WHERE r_id = %s'
+                                    
+                args = (time.strftime('%Y%m%d%H%M%S'), index)
+                db.do(sql, args)
+                if db.cursor.rowcount > 0:
+                    self.msg('Regex #%s updated.' % (index), target = target)
+                    self.getPrintRegex(index = index, target = target)
+                    self.buildRegex()
+                                    
         elif args[0] == 'list': # Lists: modify and show
             if args[1] == 'badword' or args[1] == 'badwords' or args[1] == 'regex' or args[1] == 'regexes':
-                longlist = []
-                for section in config.sections():
-                    if section != 'Setup':
-                        longlist.append(config.get(section, 'regex'))
-                shortlists = []
-                maxlen = 20
-                iters = int(math.ceil(float(len(longlist))/maxlen))
-                for x in range(0, iters):
-                    lower = x*maxlen
-                    upper = (x+1)*maxlen
-                    shortlists.append(longlist[lower:upper])
-                for l in range(0, len(shortlists)):
-                    self.msg('Regex list (%s/%s): %s' % (l+1, len(shortlists), ", ".join(shortlists[l])), target)
-                    time.sleep(2) # sleep a bit to avoid flooding?
+                if self.channels[self.channel].is_oper(nick):
+                    sql = 'SELECT r_regex FROM p_stewardbots_sulwatcher.regex WHERE r_active = 1;'
+                    results = db.do(sql)
+                    
+                    longlist = [r['r_regex'] for r in results]    
+                    maxlen = 20
+                    shortlists = [longlist[i:i + maxlen] for i in range(0, len(longlist), maxlen)]
+                    
+                    self.msg('Listing active regexes:', target)
+                    for l in range(0, len(shortlists)):
+                        self.msg('Regex list (%s/%s): %s' % (l+1, len(shortlists), ", ".join(shortlists[l])), target)
+                        time.sleep(2) # sleep a bit to avoid flooding?
+                else:
+                    self.msg('Sorry, can\'t do. I\'m afraid of flooding. You can view the list at http://toolserver.org/~stewardbots/SULWatcher/ or force me to display it by repeating this command as operator.', target)
             elif args[1] == 'whitelist':
-                self.msg('Whitelisted users: %s' % ', '.join(config.get('Setup', 'whitelist').split('<|>')), target)
+                self.msg('Whitelisted users: %s' % ', '.join(whitelist), target)
         elif args[0] == 'add':
             if args[1] == 'badword' or args[1] == 'regex':
                 badword = ' '.join(args[2:])
                 adder = self.getCloak(e.source())
                 self.addRegex(badword, adder, target)
             elif args[1] == 'reason':
-                if args[2]:
-                    section = args[2]
-                    if config.has_section(section):
-                        adder = config.get(section, 'adder')
-                        if args[3]:
-                            if args[3] == '!':
-                                reason = ' '.join(args[4:])
-                                config.set(section, 'reason', reason)
-                                adder = self.getCloak(e.source())
-                                self.setConfig(section, 'adder', adder)
-                                self.saveConfig()
-                                self.msg('OK, I re-attributed %s to you and added the reason "%s"' % (config.get(section, 'regex'), reason), target)
-                            else:
-                                reason = ' '.join(args[3:])
-                                if self.getCloak(e.source()) != adder:
-                                    self.msg('You\'re about to add a reason to %s, which was added by %s. If you do this, the regex will be re-attributed to you. Say "SULWatcher: add reason %s ! %s" to do so.' % (section, adder, section, reason), target)
-                                else:
-                                    self.setConfig(section, 'reason', reason)
-                                    self.saveConfig()
-                                    self.msg('OK, I added "%s" as the reason for %s' % (reason, config.get(section, 'regex')), target)
-                    else:
-                        self.msg('%s isn\'t listed. Say "SULWatcher: add regex \bregex\b" to add to the list.' % section, target)
+                index = args[2]
+                cloak = self.getCloak(e.source())
+                
+                # Re-attribute regex to cloak.
+                if args[3] == '!':
+                    reason = ' '.join(args[4:])
+                    sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_reason = %s, r_cloak = %s, r_timestamp = %s WHERE r_id = %s'
+                    args = (reason, cloak, time.strftime('%Y%m%d%H%M%S'), index)
+                else:
+                    reason = ' '.join(args[3:])
+                    sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_reason = %s, r_timestamp = %s WHERE r_id = %s'
+                    args = (reason, time.strftime('%Y%m%d%H%M%S'), index)
+
+                db.do(sql, args)
+                if db.cursor.rowcount > 0:
+                    self.msg('Regex #%s updated.' % (index), target = target)
+                    self.getPrintRegex(index = index, target = target)
+                    
             elif args[1] == 'whitelist':
                 who = ' '.join(args[2:])
-                self.addToList(who, 'Setup', 'whitelist', target)
+                self.addToList(who, 'whitelist', target)
         elif args[0] == 'remove':
             if args[1] == 'badword' or args[1] == 'regex':
                 badword = ' '.join(args[2:])
-                self.removeRegex(badword, target)
+                self.removeRegex(regex = badword, target = target)
             elif args[1] == 'whitelist':
                 whitelist = ' '.join(args[2:])
-                self.removeFromList(whitelist, 'Setup', 'whitelist', target)
+                self.removeFromList(whitelist, 'whitelist', target)
         elif args[0] == 'huggle': # Huggle
             if len(args) == 2:
                 who = args[1]
@@ -321,28 +330,26 @@ class FreenodeBot(SingleServerIRCBot):
                 if len(args) > 1:
                     quitmsg = ' '.join(args[1:])
                 else:
-                    quitmsg = config.get('Setup', 'quitmsg')
-                self.saveConfig()
-                print 'Saved config. Now killing all bots with message: "%s"' % quitmsg
+                    quitmsg = getConfig('quitmsg')
                 try:
                     rawquitmsg = ':'+quitmsg
                     rcreader.connection.part(rcreader.rcfeed)
                     rcreader.connection.quit()
                     rcreader.disconnect()
                 except:
-                    raise BotConnectionError("rc reader didn't disconnect")
+                    print 'rc reader didn\'t disconnect'
                 try:
                     bot1.connection.part(bot1.channel, rawquitmsg)
                     bot1.connection.quit(rawquitmsg)
                     bot1.disconnect()
                 except:
-                    raise BotConnectionError("bot1 didn't disconnect")
+                    print 'bot1 didn\'t disconnect'
                 try:
                     bot2.connection.part(bot2.channel, rawquitmsg)
                     bot2.connection.quit(rawquitmsg)
                     bot2.disconnect()
                 except:
-                    raise BotConnectionError("bot2 didn't disconnect")
+                    print 'bot2 didn\'t disconnect'
                 print 'Killed. Now exiting...'
                 #sys.exit(0) # 0 is a normal exit status
                 os._exit(os.EX_OK) # really really kill things off!!
@@ -351,10 +358,8 @@ class FreenodeBot(SingleServerIRCBot):
         elif args[0] == 'restart': # Restart
             if self.channels[self.channel].is_oper(nick):
                 print '%s is opped - restarting...' % nick
-                self.saveConfig()
-                print 'Saved config for paranoia.'
                 if len(args) == 1:
-                    quitmsg = config.get('Setup', 'quitmsg')
+                    quitmsg = getConfig('quitmsg')
                     print 'Restarting all bots with message: "%s"' % quitmsg
                     rawquitmsg = ':'+quitmsg
                     try:
@@ -393,7 +398,6 @@ class FreenodeBot(SingleServerIRCBot):
                 self.msg("You can't restart me; you're not opped!", target)
 
 ##    def integrityCheck(self):
-##        """This would be called to check and fix up the .ini file, but it was written while the author was sleeping, so it will only work in his dreams."""
 ##        sectionlist = config.sections()
 ##        sectionlist = sectionlist.remove('Setup').sort()
 ##        for i in range(0,len(sectionlist)):
@@ -409,114 +413,196 @@ class FreenodeBot(SingleServerIRCBot):
 ##                config.remove_section(sectionlist[i+1])
 ##                self.saveConfig()
 
-    def saveConfig(self):
-        """Called to save the config file."""
-        print "saveConfig(self)"
-        try:
-            configFile = open('SULWatcher.ini', 'w')
-            config.write(configFile)
-            configFile.close()
-        except IOError, (errno, strerror):
-            print "IOError(%s): %s" % (errno, strerror)
-            # Should raise a specific exception here?
-        else:
-            print "Done!"
+    def buildRegex(self):
+        global badwords
+        print 'buildRegex(self)'
 
-    def getIndex(self, option, value):
-        """
-        Given an option and a value, it returns the section number which has it.
-        """
-        print "getIndex(self, '%s', '%s')" % (option, value)
-        for section in config.sections():
-            if section != 'Setup':
-                if config.get(section, option) == value:
-                    return section
-
+        sql = 'SELECT r_id, r_regex, r_case FROM p_stewardbots_sulwatcher.regex WHERE r_active = 1;'
+        results = db.do(sql)
+        
+        badwords = []
+        for r in results:
+            index = r['r_id']
+            try:
+                if r['r_case']:
+                    regex = re.compile(r['r_regex'])
+                else:
+                    regex = re.compile(r['r_regex'], re.IGNORECASE)
+                badwords.append((index, regex))
+            except:
+                self.msg('Disabling regex %s. Could not compile pattern into regex object.' % (index))
+                self.removeRegex(index = index)
+           
+        return badwords
+    
+    def buildWhitelist(self):
+        global whitelist
+        print 'buildWhitelist(self)'
+        
+        sql = 'SELECT s_value FROM p_stewardbots_sulwatcher.setup WHERE s_param = \'whitelist\';'
+        result = db.do(sql)
+        whitelist = [r['s_value'] for r in result]
+                
     def addRegex(self, regex, cloak, target):
-        """Adds a regex to the config file."""
         print "addRegex(self, '%s', '%s', '%s')" % (regex, cloak, target)
-        for section in config.sections():
-            if section != 'Setup':
-                if config.get(section, 'regex') == regex:
-                    adder = config.get(section, 'adder')
-                    if config.has_option(section, 'reason'):
-                        reason = config.get(section, 'reason')
-                        self.msg('%s is already listed as a regex. It was added by %s with a note: "%s".' % (regex, adder, reason), target)
-                    else:
-                        self.msg('%s is already listed as a regex. It was added by %s.' % (regex, adder), target)
-                    break
-        for i in range(0,len(config.sections())):
-            if not config.has_section(str(i)):
-                config.add_section(str(i))
-                self.setConfig(str(i), 'regex', regex)
-                self.setConfig(str(i), 'adder', cloak)
-                break # leave only the the smallest for loop
-        self.saveConfig()
-        self.msg('%s added %s to the list of regexes. If you would like to set a reason, say "SULWatcher: add reason %s reason for adding the regex".' % (cloak, regex, self.getIndex('regex', regex)), target)
+        
+        sql = 'SELECT r_id FROM p_stewardbots_sulwatcher.regex WHERE r_regex = %s;'
+        args = (regex,)
+        result = db.do(sql,args)
+        
+        if not result:
+            sql = 'INSERT IGNORE INTO p_stewardbots_sulwatcher.regex (r_regex, r_cloak, r_timestamp) VALUES (%s, %s, %s)'
+            args = (regex, cloak, time.strftime('%Y%m%d%H%M%S'))
+            db.do(sql, args)
 
-    def removeRegex(self, regex, target):
-        """Removes a regex from the config file."""
-        print "removeRegex(self, '%s', '%s')" % (regex, target)
-        found = False
-        for section in config.sections():
-            if section != 'Setup':
-                if config.get(section, 'regex') == regex:
-                    config.remove_section(section)
-                    self.saveConfig()
-                    found = True
-        if found == True:
-            self.msg("Removed %s from regex list." % regex, target)
+            if db.cursor.rowcount > 0:
+                self.msg('%s added %s to the list of regexes. If you would like to set a reason, say "SULWatcher: add reason %s reason for adding the regex".' % (cloak, regex, db.cursor.lastrowid), target)
+                self.buildRegex()
         else:
-            self.msg("%s isn't in the regex list." % regex, target)
+            self.msg('%s is already listed as a regex.' % (regex), target)
+            self.getPrintRegex(regex = regex, target = target)
+
+    def removeRegex(self, regex = None, index = None, target = None):
+        print 'removeRegex(self, regex = \'%s\', index = \'%s\', target = \'%s\')' % (regex, index, target)
+        
+        if regex:
+            sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_active = 0, r_timestamp = %s WHERE r_regex = %s;'
+            args = (time.strftime('%Y%m%d%H%M%S'), regex)
+        elif index:
+            sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_active = 0, r_timestamp = %s WHERE r_id = %s;'
+            args = (time.strftime('%Y%m%d%H%M%S'), index)
+        else:
+            return
+
+        db.do(sql,args)
+        
+        if db.cursor.rowcount > 0:
+            if regex:
+                self.msg('Disabled regex %s.' % (regex), target)
+            elif index:
+                self.msg('Disabled regex #%s.' % (index), target)
+            self.buildRegex()
+        else:
+            if regex:
+                self.msg('Could not disable regex %s.' % (regex), target)
+            elif index:
+                self.msg('Could not disable regex #%s.' % (index), target)
+
+    def enableRegex(self, index, target):
+        print 'enableRegex(self, %s, %s)' % (index, target)
+        
+        sql = 'UPDATE p_stewardbots_sulwatcher.regex SET r_active = 1 WHERE r_id = %s;'
+        args = (index,)
+        
+        db.do(sql, args)
+        
+        if db.cursor.rowcount > 0:
+            self.msg('Enabled regex #%s.' % (index), target)
+            self.buildRegex()
             
-    def setConfig(self, section, option, value):
-        """Sets a config entry."""
-        print "setConfig(self, '%s', '%s', '%s')" % (section, option, value)
-        config.set(section, option, value)
-
-    def addToList(self, who, section, groupname, target):
-        """Adds something to a list in a super-hacky way... is this even needed any longer?"""
-        print "addToLost(self, '%s', '%s', '%s', '%s')" % (who, section, groupname, target)
-        list = config.get(section, groupname).split('<|>')
-        if not who in list:
-            list.append(who)
-            list = '<|>'.join(list)
-            self.setConfig(section, groupname, list)
-            self.saveConfig()
-            self.msg('%s added to %s.' % (who, groupname), target)
+    def getRegex(self, regex = None, index = None):
+        print 'getRegex(self, regex = \'%s\', index = \'%s\')' % (regex, index)
+        
+        if regex:
+            sql =   """
+                    SELECT r_id, r_regex, r_active, r_case, r_cloak, r_reason, r_timestamp, sum(if(l_id, 1, 0)) AS hits
+                    FROM p_stewardbots_sulwatcher.regex
+                    LEFT JOIN p_stewardbots_sulwatcher.logging
+                    ON l_regex = r_regex
+                    WHERE r_regex = %s;
+                    """
+            args = (regex,)
+        elif index:
+            sql =   """
+                    SELECT r_id, r_regex, r_active, r_case, r_cloak, r_reason, r_timestamp, sum(if(l_id, 1, 0)) AS hits
+                    FROM p_stewardbots_sulwatcher.regex
+                    LEFT JOIN p_stewardbots_sulwatcher.logging
+                    ON l_regex = r_regex
+                    WHERE r_id = %s;
+                    """
+            args = (index,)
         else:
-            self.msg('%s already in %s.' % (who, groupname), target)
+            return None
 
-    def removeFromList(self, who, section, groupname, target):
-        """Removes something from our sooper-dooper list. As above, is this still needed?"""
-        print "removeFromList(self, '%s', '%s', '%s', '%s')" % (who, section, groupname, target)
-        list = config.get(section, groupname).split('<|>')
-        if who in list:
-            list.remove(who)
-            list = '<|>'.join(list)
-            self.setConfig(section, groupname, list)
-            self.saveConfig()
-            self.msg('%s removed from %s.' % (who, groupname), target)
+        result = db.do(sql, args)
+        
+        if result:
+            return result[0]
+    
+    def getPrintRegex(self, regex = None, index = None, target = None):
+        print 'getPrintRegex(self, regex = \'%s\', index = \'%s\', target = \'%s\')' % (regex, index, target)
+        
+        r = self.getRegex(regex = regex, index = index)
+        if r:
+            if r['r_active']:
+                info = 'active'
+            else:
+                info = 'inactive'
+            
+            if r['r_case']:
+                info += ', case sensitive'
+            try:
+                timestamp = time.strftime('%H:%M, %d %B %Y', time.strptime(r['r_timestamp'], '%Y%m%d%H%M%S'))
+            except:
+                timestamp = r['r_timestamp']
+
+            self.msg('Regex %s (#%s, %s, %s hits) added by %s with last update at %s and note: \'%s\'.' % (r['r_regex'], r['r_id'], info, r['hits'], r['r_cloak'], timestamp, r['r_reason']), target)
         else:
-            self.msg('%s not in %s.' % (who, groupname), target)
+            self.msg('Regex #%s could not be found.' % (index), target)
+                                        
+                 
+    def addToList(self, who, groupname, target):
+        print 'addToList(self, \'%s\', \'%s\', \'%s\')' % (who, groupname, target)
+        
+        l = getConfig(groupname)
+        if not l:
+            self.msg('Could not find \'%s\'.' % (groupname), target)
+        elif not who in l:
+            sql = 'INSERT INTO  p_stewardbots_sulwatcher.setup (s_param, s_value) VALUES (%s, %s);'
+            args = (groupname, who)
+            db.do(sql, args)
+
+            if db.cursor.rowcount > 0:
+                self.msg('Added %s to %s.' % (who, groupname), target)
+                
+                #Rebuild whitelist if necessary
+                if groupname == 'whitelist':
+                    self.buildWhitelist()
+        else:
+            self.msg('%s is already in %s.' % (who, groupname), target)
+
+    def removeFromList(self, who, groupname, target):
+        print 'removeFromList(self, \'%s\', \'%s\', \'%s\')' % (who, groupname, target)
+        
+        l = getConfig(groupname)
+        if not l:
+            self.msg('Could not find \'%s\'.' % (groupname), target)
+        elif who in l:
+            sql = 'DELETE FROM p_stewardbots_sulwatcher.setup WHERE s_param = %s AND s_value = %s;'
+            args = (groupname, who)
+            db.do(sql, args)
+            
+            if db.cursor.rowcount > 0:
+                self.msg('Removed %s from %s.' % (who, groupname), target)
+                
+                #Rebuild whitelist if necessary
+                if groupname == 'whitelist':
+                    self.buildWhitelist()
+        else:
+            self.msg('%s is not in %s.' % (who, groupname), target)
 
     def msg(self, message, target=None):
-        """Sends an IRC message."""
         #print "msg(self, '%s', '%s')" % (message, target)
         if not target:
             target = self.channel
         self.connection.privmsg(target, message)
 
     def getCloak(self, doer):
-        """Returns the cloak part of a usermask."""
-        print "getCloak(self, '%s')" % doer
+        print 'getCloak(self, \'%s\')' % doer
         if re.search('@', doer):
             return doer.split('@')[1]
 
 class WikimediaBot(SingleServerIRCBot):
-    """A WikimediaBot class, which reads from the IRC channel, parses, filters, then outputs via one of
-    two FreenodeBot instances (to avoid flooding the connection).
-    """
     def __init__(self, rcfeed, nickname, server, port=6667):
         SingleServerIRCBot.__init__(self, [(server, port)], nickname, nickname)
         self.server = server
@@ -526,27 +612,23 @@ class WikimediaBot(SingleServerIRCBot):
         globals()['lastbot'] = 1
 
     def on_error(self, c, e):
-        """Called on an IRC error."""
         print e.target()
         #self.die()
     
     def on_nicknameinuse(self, c, e):
-        """Called when the desired nick is in use."""
         c.nick(c.get_nickname() + '_')
 
     def on_welcome(self, c, e):
-        """Called when successfully connected to the server."""
         c.join(self.rcfeed)
 
     def on_ctcp(self, c, e):
-        """Called on any CTCP event."""
         if e.arguments()[0] == 'VERSION':
             c.ctcp_reply(nm_to_n(e.source()), 'Bot for watching stuff in %s' % channel)
         elif e.arguments()[0] == 'PING':
             if len(e.arguments()) > 1: c.ctcp_reply(nm_to_n(e.source()),"PING " + e.arguments()[1])
         
     def on_pubmsg(self, c, e):
-        """Called when a public message (ie in a channel) happens."""
+        global badwords, whitelist
         a = e.arguments()[0]
         #bot1.msg(a)
         # Parsing the rcbot output: \x0314[[\x0307Usu\xc3\xa1rio:Liliaan\x0314]]\x034@ptwiki\x0310 \x0302http://pt.wikipedia.org/wiki/Usu%C3%A1rio:Liliaan\x03 \x035*\x03 \x0303Liliaan\x03 \x035*\x03
@@ -559,16 +641,12 @@ class WikimediaBot(SingleServerIRCBot):
                 bad = False
                 good = False
                 #print "%s@%s" % (sulname, sulwiki)
-                badwords = []
-                for section in config.sections():
-                    if section != 'Setup':
-                        badwords.append(re.compile(config.get(section, 'regex'), re.IGNORECASE))
                 matches = []
-                for bw in badwords:
+                for (idx, bw) in badwords:
                     if (bw.search(sulname)): # Regex!
                         bad = True
                         matches.append(bw.pattern)
-                for wl in config.get('Setup', 'whitelist').split('<|>'):
+                for wl in whitelist:
                     if sulname == wl:
                         print '(skipped %s; user is whitelisted)' % sulname
                         good = True
@@ -580,6 +658,13 @@ class WikimediaBot(SingleServerIRCBot):
                         bot2.msg("\x0303%s\x03@%s: \x0302https://secure.wikimedia.org/wikipedia/meta/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, urllib.quote(sulname)))
                         globals()['lastbot'] = 2
                 elif bad and not good:
+                    for m in matches:
+                        try:
+                            sql = 'INSERT INTO p_stewardbots_sulwatcher.logging (l_regex, l_user, l_project, l_timestamp) VALUES (%s, %s, %s, %s);'
+                            args = (m, sulname, sulwiki, time.strftime('%Y%m%d%H%M%S'))
+                            db.do(sql, args)
+                        except:
+                            print 'Could not log hit to database.'
                     if globals()['lastbot'] != 1:
                         bot1.msg("\x0303%s\x03@%s \x0305\x02matches badword %s\017: \x0302https://secure.wikimedia.org/wikipedia/meta/wiki/Special:CentralAuth/%s\x03" % (sulname, sulwiki, '; '.join(matches), urllib.quote(sulname)))
                         globals()['lastbot'] = 1
@@ -591,7 +676,6 @@ class WikimediaBot(SingleServerIRCBot):
             print 'RC reader error: %s' % sys.exc_info()[1]
 
 class BotThread(threading.Thread):
-    """A threading class for bots"""
     def __init__ (self, bot):
         self.b=bot
         threading.Thread.__init__ (self)
@@ -602,27 +686,43 @@ class BotThread(threading.Thread):
     def startbot(self, bot):
         bot.start()
 
-def main():
-    """A main method to set up our globals, read and set configuration, and get the bots going."""
-    global bot1, rcreader, bot2, config, nickname, alias, password, mainchannel, mainserver, wmserver, rcfeed
-    config = ConfigParser.ConfigParser()
-    config.read('SULWatcher.ini')
-    nickname = config.get('Setup', 'nickname')
-    alias = config.get('Setup', 'alias')
-    password = config.get('Setup', 'password')
-    mainchannel = config.get('Setup', 'channel')
-    mainserver = config.get('Setup', 'server')
-    wmserver = config.get('Setup', 'wmserver')
-    rcfeed = config.get('Setup', 'rcfeed')
-    if config.has_option('Setup', 'opernick') and config.has_option('Setup','operpass'):
-        global opernick, operpass
-        opernick = config.get('Setup', 'opernick')
-        operpass = config.get('Setup', 'operpass')
-        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 6667, opernick, operpass)
-        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 6667, opernick, operpass)
+def getConfig(param):  
+    print 'getConfig(self, \'%s\')' % (param)
+       
+    sql = 'SELECT s_value FROM p_stewardbots_sulwatcher.setup WHERE s_param = %s;'
+    args = (param,)
+    result = db.do(sql, args)
+    result = [r['s_value'] for r in result]
+    
+    if len(result) > 1:
+        return result
+    elif len(result) == 1:
+        return result[0]
     else:
-        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 6667)
-        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 6667)
+        return None
+                
+def main():
+    global bot1, rcreader, bot2, nickname, alias, password, mainchannel, mainserver, wmserver, rcfeed, db
+    
+    db = querier(host = 'sql-s3')
+    nickname = getConfig('nickname')
+    alias = getConfig('alias')
+    password = getConfig('password')
+    mainchannel = getConfig('channel')
+    mainserver = getConfig('server')
+    wmserver = getConfig('wmserver')
+    rcfeed = getConfig('rcfeed')
+       
+    if getConfig('opernick') and getConfig('operpass'):
+        global opernick, operpass
+        opernick = getConfig('opernick')
+        operpass = getConfig('operpass')
+
+        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001, opernick, operpass)
+        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001, opernick, operpass)
+    else:
+        bot1 = FreenodeBot(mainchannel, nickname, mainserver, password, 8001)
+        bot2 = FreenodeBot(mainchannel, alias,    mainserver, password, 8001)
     BotThread(bot1).start()
     BotThread(bot2).start()
     time.sleep(6) # The Freenode bots connect comparatively slowly & have a 5s delay to identify to services before joining channels
@@ -630,8 +730,7 @@ def main():
     BotThread(rcreader).start() # Can cause ServerNotConnectedError
 
 if __name__ == "__main__":
-    """Do it."""
-    global bot1, rcreader, bot2, config
+    global bot1, rcreader, bot2, db
     main()
 ##    try:
 ##        main()
