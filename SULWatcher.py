@@ -172,9 +172,12 @@ class FreenodeBot(SingleServerIRCBot):
                     raise CommanderError("You didn't use the right format for testing: 'SULWatcher: test <string to test> regex \bregular ?expression\b'")
             elif len(args)==1:
                 self.msg("Yes, I'm alive. You can test a string against a regex by saying 'SULWatcher: test <string to test> regex \bregular ?expression\b'.", target)
-                # Test MySQL connection
-                sql = 'SELECT l_regex, l_user, l_timestamp FROM p_stewardbots_sulwatcher.logging ORDER BY l_id DESC LIMIT 1;'
-                result = db.do(sql)
+                try:
+                    # Test MySQL connection
+                    sql = 'SELECT l_regex, l_user, l_timestamp FROM p_stewardbots_sulwatcher.logging ORDER BY l_id DESC LIMIT 1;'
+                    result = db.do(sql)
+                except:
+                    result = None
                 
                 if result:
                     r = result[0]
