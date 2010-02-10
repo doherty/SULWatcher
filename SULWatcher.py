@@ -172,6 +172,20 @@ class FreenodeBot(SingleServerIRCBot):
                     raise CommanderError("You didn't use the right format for testing: 'SULWatcher: test <string to test> regex \bregular ?expression\b'")
             elif len(args)==1:
                 self.msg("Yes, I'm alive. You can test a string against a regex by saying 'SULWatcher: test <string to test> regex \bregular ?expression\b'.", target)
+                # Test MySQL connection
+                sql = 'SELECT l_regex, l_user, l_timestamp FROM p_stewardbots_sulwatcher.logging ORDER BY l_id DESC LIMIT 1;'
+                result = db.do(sql)
+                
+                if result:
+                    r = result[0]
+                    try:
+                        timestamp = time.strftime('%H:%M, %d %B %Y', time.strptime(r['l_timestamp'], '%Y%m%d%H%M%S'))
+                    except:
+                        timestamp = r['l_timestamp']                
+                    self.msg(u'MySQL connection seems to be fine. Last hit was %s matching %s at %s.' % (r['l_user'], r['l_regex'], timestamp))
+                else:
+                    self.msg(u'MySQL connection seems to be down. Please restart the bots.')                       
+                        
         elif args[0] == 'find' or args[0] == 'search':
             if args[1] == 'regex' or args[1] == 'badword':
                 badword = ' '.join(args[2:])
