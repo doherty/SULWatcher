@@ -40,4 +40,4 @@ Database layout
 
 The bot uses three tables to store its setup, regexes and log hits. At the toolserver, these tables are in `p_stewardbots_sulwatcher` on `sql-s3`.
 
-Setup is stored in `setup`, regexes in `regex` and logging is done in `logging`. The table `unique_logging` is a [view](http://en.wikipedia.org/wiki/Database_view) on `logging` used by http://toolserver.org/~stewardbots/SULWatcher/, it is not used by the IRC bot itself.
+Setup is stored in `setup`, regexes in `regex` and logging is done in `logging`. The table `unique_logging` is a [view](http://en.wikipedia.org/wiki/Database_view) on `logging` used by <http://toolserver.org/~stewardbots/SULWatcher/>, it is not used by the IRC bot itself.
