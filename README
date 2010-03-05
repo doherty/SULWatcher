@@ -17,7 +17,7 @@ You'll need MySQL and python.
 1)  Create a database for this bot.
 2)  In MySQL:
         CREATE DATABASE <name>
-3)  Open SULWatcher.sql and replace all occurences of p_stewardbots_sulwatcher with the name of 
+3)  Open SULWatcher.sql and replace all occurences of p_stewardbots_sulwatcher with the name of
     your database.
     Execute SULWatcher.sql, in MySQL:
         SOURCE SULWatcher.sql
@@ -26,15 +26,15 @@ You'll need MySQL and python.
     your database.
     Execute ini2mysql.py:
         python ini2mysql.py
-    
+
 === BACKUP ===
 
 To backup the database execute:
     mysqldump <name> > <name>.sql
-    
+
 You can then re-import the database with:
     mysql <name> < <name>.sql
-    
+
 === Database layout ===
 The bot uses three tables to store its setup, regexes and log hits. At the
 toolserver these tables are in p_stewardbots_sulwatcher on sql-s3.
